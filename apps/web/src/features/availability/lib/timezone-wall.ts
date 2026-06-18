@@ -45,19 +45,51 @@ export function wallTimeToUtc(
   const day = Number.parseInt(dateKey.slice(6, 8), 10);
   const hour = Math.floor(minutes / 60);
   const minute = minutes % 60;
+  const targetMin = hour * 60 + minute;
+  const targetDayMs = Date.UTC(year, month - 1, day);
 
   let utcMs = Date.UTC(year, month - 1, day, hour, minute, 0);
 
   for (let i = 0; i < 4; i++) {
     const parts = getPartsInTimeZone(new Date(utcMs), timeZone);
-    const targetDayMs = Date.UTC(year, month - 1, day);
     const actualDayMs = Date.UTC(parts.year, parts.month - 1, parts.day);
-    const dayDiffMs = targetDayMs - actualDayMs;
-    const targetMin = hour * 60 + minute;
     const actualMin = parts.hour * 60 + parts.minute;
-    const adjustMs = dayDiffMs + (targetMin - actualMin) * 60_000;
+    const adjustMs =
+      targetDayMs - actualDayMs + (targetMin - actualMin) * 60_000;
     if (adjustMs === 0) break;
     utcMs += adjustMs;
+  }
+
+  // DST spring-forward gap check: if the converged UTC doesn't round-trip back
+  // to the requested wall time, the requested time falls in a non-existent gap
+  // hour (e.g. 2:00–3:00 AM on spring-forward night in America/New_York).
+  // The correction loop oscillates rather than converging in that case. Clamp
+  // forward to the first valid wall minute >= the requested time (the post-gap
+  // transition instant, i.e. where the clock jumps to).
+  const resultParts = getPartsInTimeZone(new Date(utcMs), timeZone);
+  const resultDayMs = Date.UTC(
+    resultParts.year,
+    resultParts.month - 1,
+    resultParts.day,
+  );
+  if (
+    resultDayMs !== targetDayMs ||
+    resultParts.hour * 60 + resultParts.minute !== targetMin
+  ) {
+    // Search for the post-gap start: first UTC where wall time is on the
+    // correct date and >= the requested minute. Scan from 2 h before utcMs
+    // (covers the widest DST gap in the tz database).
+    const searchStart = utcMs - 2 * 3600_000;
+    for (let ms = searchStart; ms <= utcMs + 3600_000; ms += 60_000) {
+      const p = getPartsInTimeZone(new Date(ms), timeZone);
+      if (
+        Date.UTC(p.year, p.month - 1, p.day) === targetDayMs &&
+        p.hour * 60 + p.minute >= targetMin
+      ) {
+        utcMs = ms;
+        break;
+      }
+    }
   }
 
   return new Date(utcMs);

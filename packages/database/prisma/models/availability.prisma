@@ -7,7 +7,9 @@ model AvailabilitySource {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user         User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  syncState    CalendarSyncState?
+  cachedEvents CachedCalendarEvent[]
 
   @@index([userId])
   @@map("availability_sources")
@@ -27,39 +29,47 @@ model AvailabilitySnapshot {
 }
 
 model CalendarSyncState {
-  id         String    @id @default(cuid())
-  userId     String    @map("user_id")
-  sourceKind String    @map("source_kind")
-  sourceId   String    @unique @map("source_id")
-  syncFrom   DateTime  @map("sync_from")
-  lastSyncAt DateTime? @map("last_sync_at")
-  lastStatus String    @default("pending") @map("last_status")
-  lastError  String?   @map("last_error")
-  createdAt  DateTime  @default(now()) @map("created_at")
-  updatedAt  DateTime  @updatedAt @map("updated_at")
+  id                   String    @id @default(cuid())
+  userId               String    @map("user_id")
+  sourceKind           String    @map("source_kind")
+  sourceId             String    @unique @map("source_id")
+  connectionId         String?   @unique @map("connection_id")
+  availabilitySourceId String?   @unique @map("availability_source_id")
+  syncFrom             DateTime  @map("sync_from")
+  lastSyncAt           DateTime? @map("last_sync_at")
+  lastStatus           String    @default("pending") @map("last_status")
+  lastError            String?   @map("last_error")
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user               User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  calendarConnection CalendarConnection? @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  availabilitySource AvailabilitySource? @relation(fields: [availabilitySourceId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@map("calendar_sync_states")
 }
 
 model CachedCalendarEvent {
-  id          String   @id @default(cuid())
-  userId      String   @map("user_id")
-  sourceKind  String   @map("source_kind")
-  sourceId    String   @map("source_id")
-  externalUid String   @map("external_uid")
-  calendarId  String?  @map("calendar_id")
-  startTime   DateTime @map("start_time")
-  endTime     DateTime @map("end_time")
-  summary     String?
-  raw         Json?
-  syncedAt    DateTime @map("synced_at")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  id                   String   @id @default(cuid())
+  userId               String   @map("user_id")
+  sourceKind           String   @map("source_kind")
+  sourceId             String   @map("source_id")
+  connectionId         String?  @map("connection_id")
+  availabilitySourceId String?  @map("availability_source_id")
+  externalUid          String   @map("external_uid")
+  calendarId           String?  @map("calendar_id")
+  startTime            DateTime @map("start_time")
+  endTime              DateTime @map("end_time")
+  summary              String?
+  raw                  Json?
+  syncedAt             DateTime @map("synced_at")
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user               User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  calendarConnection CalendarConnection? @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  availabilitySource AvailabilitySource? @relation(fields: [availabilitySourceId], references: [id], onDelete: Cascade)
 
   @@unique([sourceId, externalUid], name: "cached_event_source_uid_unique")
   @@index([userId, startTime, endTime], name: "cached_event_user_range_idx")

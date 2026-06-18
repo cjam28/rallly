@@ -38,10 +38,12 @@ model CalendarConnection {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   // Relationships
-  credential        Credential         @relation(fields: [credentialId], references: [id], onDelete: Cascade)
-  credentialId      String             @map("credential_id")
-  user              User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  credential        Credential          @relation(fields: [credentialId], references: [id], onDelete: Cascade)
+  credentialId      String              @map("credential_id")
+  user              User                @relation(fields: [userId], references: [id], onDelete: Cascade)
   providerCalendars ProviderCalendar[]
+  syncState         CalendarSyncState?
+  cachedEvents      CachedCalendarEvent[]
 
   // Constraints and indexes
   @@unique([userId, provider, providerAccountId], name: "user_provider_account_unique")
