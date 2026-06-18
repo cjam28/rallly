@@ -114,12 +114,14 @@ export class ZohoCalendarService implements CalendarService {
 
   private mapCalendarItem(cal: ZohoCalendarListItem): CalendarInfo {
     const category = cal.category ?? cal.caltype;
+    const isDisabled = isZohoCalendarDisabled(cal);
+    const initialSyncMode = getZohoInitialSyncMode(cal);
     return {
       id: cal.uid ?? this.email,
       name: cal.name ?? "Zoho Calendar",
       timeZone: cal.timezone,
       isPrimary: Boolean(cal.isdefault),
-      isSelected: cal.include_infreebusy !== false,
+      isSelected: initialSyncMode !== "none",
       isDeleted: false,
       isWritable: false,
       _rawData: {
@@ -129,6 +131,7 @@ export class ZohoCalendarService implements CalendarService {
         include_infreebusy: cal.include_infreebusy,
         visibility: cal.visibility,
         status: cal.status,
+        providerDisabled: isDisabled,
       },
     };
   }
@@ -286,6 +289,21 @@ export class ZohoCalendarService implements CalendarService {
 
     return events;
   }
+}
+
+/** Zoho `status: false` = calendar disabled (eyeball-slash); not the same as `visibility`. */
+export function isZohoCalendarDisabled(cal: { status?: boolean }): boolean {
+  return cal.status === false;
+}
+
+/** Seed sync mode on first upsert from free/busy preference, not view visibility. */
+export function getZohoInitialSyncMode(cal: {
+  status?: boolean;
+  include_infreebusy?: boolean;
+}): "none" | "display" | "availability" {
+  if (isZohoCalendarDisabled(cal)) return "none";
+  if (cal.include_infreebusy === false) return "display";
+  return "availability";
 }
 
 function isCalendarAuthError(error: unknown): boolean {

@@ -8,6 +8,7 @@ import {
   normalizeCalDAVServerUrl,
 } from "./services/caldav-url";
 import type { CalendarInfo } from "./services/types";
+import { getZohoInitialSyncMode } from "./services/zoho-calendar";
 
 export const createCalendarConnection = async (params: {
   userId: string;
@@ -163,6 +164,9 @@ export const syncCalendars = async ({
 
     // Upsert calendars from the provider response
     for (const calendar of calendars) {
+      const providerDisabled = isProviderDisabledCalendar(calendar);
+      const initialSyncMode = getInitialSyncModeFromCalendar(calendar);
+
       await tx.providerCalendar.upsert({
         where: {
           connection_calendar_unique: {
@@ -176,7 +180,8 @@ export const syncCalendars = async ({
           name: calendar.name,
           timeZone: calendar.timeZone,
           isPrimary: calendar.isPrimary,
-          isSelected: calendar.isSelected,
+          isSelected: initialSyncMode !== "none",
+          syncMode: initialSyncMode,
           isDeleted: calendar.isDeleted ?? false,
           isWritable: calendar.isWritable,
           providerData: calendar._rawData,
@@ -190,6 +195,9 @@ export const syncCalendars = async ({
           isWritable: calendar.isWritable,
           lastSyncedAt: new Date(),
           providerData: calendar._rawData,
+          ...(providerDisabled
+            ? { syncMode: "none" as const, isSelected: false }
+            : {}),
         },
       });
     }
@@ -318,6 +326,85 @@ export const setCalendarSelection = async (params: {
   return { success: true };
 };
 
+function isProviderDisabledCalendar(calendar: CalendarInfo): boolean {
+  const raw = calendar._rawData as
+    | { status?: boolean; providerDisabled?: boolean }
+    | undefined;
+  if (raw?.providerDisabled === true) return true;
+  if (raw?.status === false) return true;
+  return false;
+}
+
+function isProviderDisabledFromData(providerData: unknown): boolean {
+  const raw = providerData as
+    | { status?: boolean; providerDisabled?: boolean }
+    | null
+    | undefined;
+  if (raw?.providerDisabled === true) return true;
+  if (raw?.status === false) return true;
+  return false;
+}
+
+function getInitialSyncModeFromCalendar(
+  calendar: CalendarInfo,
+): "none" | "display" | "availability" {
+  const raw = calendar._rawData as
+    | { status?: boolean; include_infreebusy?: boolean }
+    | undefined;
+  if (raw) {
+    return getZohoInitialSyncMode(raw);
+  }
+  return calendar.isSelected ? "availability" : "display";
+}
+
+export const setSyncModeBulk = async (params: {
+  userId: string;
+  connectionId: string;
+  calendarIds?: string[];
+  syncMode: "none" | "display" | "availability";
+}) => {
+  const { userId, connectionId, calendarIds, syncMode } = params;
+
+  const connection = await prisma.calendarConnection.findFirst({
+    where: { id: connectionId, userId },
+  });
+
+  if (!connection) {
+    return { success: false, error: "Calendar connection not found" as const };
+  }
+
+  const calendars = await prisma.providerCalendar.findMany({
+    where: {
+      calendarConnectionId: connectionId,
+      isDeleted: false,
+      ...(calendarIds?.length ? { id: { in: calendarIds } } : {}),
+    },
+    select: { id: true, providerData: true },
+  });
+
+  const eligibleIds =
+    syncMode === "none"
+      ? calendars.map((calendar) => calendar.id)
+      : calendars
+          .filter(
+            (calendar) => !isProviderDisabledFromData(calendar.providerData),
+          )
+          .map((calendar) => calendar.id);
+
+  if (eligibleIds.length === 0) {
+    return { success: true, updated: 0 };
+  }
+
+  const isSelected = syncMode !== "none";
+
+  await prisma.providerCalendar.updateMany({
+    where: { id: { in: eligibleIds } },
+    data: { syncMode, isSelected },
+  });
+
+  return { success: true, updated: eligibleIds.length };
+};
+
 export const setSyncMode = async (params: {
   userId: string;
   calendarId: string;
@@ -331,6 +418,16 @@ export const setSyncMode = async (params: {
 
   if (!calendar) {
     return { success: false, error: "Calendar not found" as const };
+  }
+
+  if (
+    syncMode !== "none" &&
+    isProviderDisabledFromData(calendar.providerData)
+  ) {
+    return {
+      success: false,
+      error: "Calendar disabled in Zoho" as const,
+    };
   }
 
   // Keep isSelected in sync with syncMode for backward-compat queries.

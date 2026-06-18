@@ -48,6 +48,8 @@ const ZOHO_CATEGORY_I18N: Record<ZohoCategory, string> = {
   others: "zohoCalendarCategoryOthers",
 };
 
+type SyncMode = "none" | "display" | "availability";
+
 function getZohoCategory(providerData: unknown): ZohoCategory {
   const data = providerData as { category?: string; caltype?: string } | null;
   const raw = data?.category ?? data?.caltype ?? "own";
@@ -55,6 +57,14 @@ function getZohoCategory(providerData: unknown): ZohoCategory {
     return raw;
   }
   return "others";
+}
+
+function isProviderDisabled(providerData: unknown): boolean {
+  const data = providerData as {
+    status?: boolean;
+    providerDisabled?: boolean;
+  } | null;
+  return data?.providerDisabled === true || data?.status === false;
 }
 
 type ProviderCalendar = {
@@ -92,6 +102,9 @@ export function CalendarConnectionList() {
   });
   const { t } = useTranslation();
   const setSyncMode = trpc.calendars.setSyncMode.useMutation({
+    onSuccess: () => utils.calendars.list.invalidate(),
+  });
+  const setSyncModeBulk = trpc.calendars.setSyncModeBulk.useMutation({
     onSuccess: () => utils.calendars.list.invalidate(),
   });
 
@@ -294,24 +307,90 @@ export function CalendarConnectionList() {
                 </p>
               ) : null}
               {calendar.provider === "zoho" ? (
-                <div className="space-y-4">
+                <div className="max-h-[min(24rem,50vh)] space-y-4 overflow-y-auto pr-1">
                   {groupZohoCalendars(calendar.providerCalendars).map(
                     ({ category, calendars: groupCalendars }) => (
                       <div key={category} className="space-y-2">
-                        <p className="font-medium text-muted-foreground text-xs uppercase tracking-wide">
-                          <Trans
-                            i18nKey={ZOHO_CATEGORY_I18N[category]}
-                            defaults={
-                              category === "own"
-                                ? "My calendars"
-                                : category === "app"
-                                  ? "App calendars"
-                                  : category === "group"
-                                    ? "Group calendars"
-                                    : "Subscribed & other"
-                            }
-                          />
-                        </p>
+                        <div className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-2 border-b bg-background/95 py-2 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+                          <p className="font-medium text-muted-foreground text-xs uppercase tracking-wide">
+                            <Trans
+                              i18nKey={ZOHO_CATEGORY_I18N[category]}
+                              defaults={
+                                category === "own"
+                                  ? "My calendars"
+                                  : category === "app"
+                                    ? "App calendars"
+                                    : category === "group"
+                                      ? "Group calendars"
+                                      : "Subscribed & other"
+                              }
+                            />
+                          </p>
+                          <div className="flex flex-wrap gap-1">
+                            <BulkSyncModeButton
+                              label={t("bulkSyncModeAvailability", {
+                                defaultValue: "All: availability",
+                              })}
+                              loading={
+                                setSyncModeBulk.isPending &&
+                                setSyncModeBulk.variables?.connectionId ===
+                                  calendar.id &&
+                                setSyncModeBulk.variables?.syncMode ===
+                                  "availability"
+                              }
+                              onClick={() =>
+                                applyBulkSyncMode({
+                                  connectionId: calendar.id,
+                                  calendarIds: groupCalendars.map((c) => c.id),
+                                  syncMode: "availability",
+                                  setSyncModeBulk,
+                                  t,
+                                })
+                              }
+                            />
+                            <BulkSyncModeButton
+                              label={t("bulkSyncModeDisplay", {
+                                defaultValue: "All: display only",
+                              })}
+                              loading={
+                                setSyncModeBulk.isPending &&
+                                setSyncModeBulk.variables?.connectionId ===
+                                  calendar.id &&
+                                setSyncModeBulk.variables?.syncMode ===
+                                  "display"
+                              }
+                              onClick={() =>
+                                applyBulkSyncMode({
+                                  connectionId: calendar.id,
+                                  calendarIds: groupCalendars.map((c) => c.id),
+                                  syncMode: "display",
+                                  setSyncModeBulk,
+                                  t,
+                                })
+                              }
+                            />
+                            <BulkSyncModeButton
+                              label={t("bulkSyncModeNone", {
+                                defaultValue: "All: don't sync",
+                              })}
+                              loading={
+                                setSyncModeBulk.isPending &&
+                                setSyncModeBulk.variables?.connectionId ===
+                                  calendar.id &&
+                                setSyncModeBulk.variables?.syncMode === "none"
+                              }
+                              onClick={() =>
+                                applyBulkSyncMode({
+                                  connectionId: calendar.id,
+                                  calendarIds: groupCalendars.map((c) => c.id),
+                                  syncMode: "none",
+                                  setSyncModeBulk,
+                                  t,
+                                })
+                              }
+                            />
+                          </div>
+                        </div>
                         <ul className="space-y-2">
                           {groupCalendars.map((c) =>
                             renderCalendarRow(c, setSyncMode, t),
@@ -336,21 +415,81 @@ export function CalendarConnectionList() {
   );
 }
 
+function BulkSyncModeButton({
+  label,
+  loading,
+  onClick,
+}: {
+  label: string;
+  loading: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="sm"
+      className="h-7 px-2 text-xs"
+      loading={loading}
+      onClick={onClick}
+    >
+      {label}
+    </Button>
+  );
+}
+
+function applyBulkSyncMode({
+  connectionId,
+  calendarIds,
+  syncMode,
+  setSyncModeBulk,
+  t,
+}: {
+  connectionId: string;
+  calendarIds: string[];
+  syncMode: SyncMode;
+  setSyncModeBulk: ReturnType<
+    typeof trpc.calendars.setSyncModeBulk.useMutation
+  >;
+  t: ReturnType<typeof useTranslation>["t"];
+}) {
+  toast.promise(
+    setSyncModeBulk.mutateAsync({
+      connectionId,
+      calendarIds,
+      syncMode,
+    }),
+    {
+      loading: t("bulkSyncModeLoading", {
+        defaultValue: "Updating calendars…",
+      }),
+      success: t("bulkSyncModeSuccess", {
+        defaultValue: "Calendar sync settings updated",
+      }),
+      error: t("bulkSyncModeError", {
+        defaultValue: "Failed to update calendar sync settings",
+      }),
+    },
+  );
+}
+
 function renderCalendarRow(
   c: ProviderCalendar & { lastSyncedAt?: Date | null },
   setSyncMode: ReturnType<typeof trpc.calendars.setSyncMode.useMutation>,
   t: ReturnType<typeof useTranslation>["t"],
 ) {
-  const mode = (c.syncMode ?? "availability") as
-    | "none"
-    | "display"
-    | "availability";
+  const disabledInZoho = isProviderDisabled(c.providerData);
+  const mode = (
+    disabledInZoho ? "none" : (c.syncMode ?? "availability")
+  ) as SyncMode;
+
   return (
     <li key={c.id} className="flex items-center gap-x-4">
       <Select
         value={mode}
+        disabled={disabledInZoho}
         onValueChange={(value) => {
-          const syncMode = value as "none" | "display" | "availability";
+          const syncMode = value as SyncMode;
           toast.promise(
             setSyncMode.mutateAsync({
               calendarId: c.id,
@@ -363,9 +502,19 @@ function renderCalendarRow(
               success: t("calendarSelectionSetSuccess", {
                 defaultValue: "Calendar selection updated",
               }),
-              error: t("calendarSelectionSetError", {
-                defaultValue: "Failed to update selection",
-              }),
+              error: (err) => {
+                const message =
+                  err instanceof Error ? err.message : String(err);
+                if (message.includes("calendar_disabled_in_zoho")) {
+                  return t("calendarDisabledInZoho", {
+                    defaultValue:
+                      "This calendar is disabled in Zoho and cannot be synced.",
+                  });
+                }
+                return t("calendarSelectionSetError", {
+                  defaultValue: "Failed to update selection",
+                });
+              },
             },
           );
         }}
@@ -388,7 +537,18 @@ function renderCalendarRow(
           </SelectItem>
         </SelectContent>
       </Select>
-      <span className="text-sm">{c.name}</span>
+      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+        <span
+          className={`text-sm ${disabledInZoho ? "text-muted-foreground" : ""}`}
+        >
+          {c.name}
+        </span>
+        {disabledInZoho ? (
+          <Badge variant="secondary" className="text-xs">
+            <Trans i18nKey="zohoCalendarDisabled" defaults="Disabled in Zoho" />
+          </Badge>
+        ) : null}
+      </div>
     </li>
   );
 }

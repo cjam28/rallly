@@ -6,6 +6,7 @@ import {
   setCalendarSelection,
   setDefaultCalendar,
   setSyncMode,
+  setSyncModeBulk,
   syncCalendars,
 } from "@/features/calendars/mutations";
 import {
@@ -82,11 +83,45 @@ export const calendars = router({
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      return setSyncMode({
+      const result = await setSyncMode({
         userId: ctx.user.id,
         calendarId: input.calendarId,
         syncMode: input.syncMode,
       });
+
+      if (!result.success && result.error === "Calendar disabled in Zoho") {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "calendar_disabled_in_zoho",
+        });
+      }
+
+      return result;
+    }),
+  setSyncModeBulk: privateProcedure
+    .input(
+      z.object({
+        connectionId: z.string(),
+        calendarIds: z.array(z.string()).optional(),
+        syncMode: z.enum(["none", "display", "availability"]),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const result = await setSyncModeBulk({
+        userId: ctx.user.id,
+        connectionId: input.connectionId,
+        calendarIds: input.calendarIds,
+        syncMode: input.syncMode,
+      });
+
+      if (!result.success) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: result.error,
+        });
+      }
+
+      return result;
     }),
   connectCalDAV: privateProcedure
     .input(
