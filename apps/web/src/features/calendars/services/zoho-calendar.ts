@@ -10,6 +10,7 @@ import type {
 import {
   parseZohoFreeBusyResponse,
   toZohoDate,
+  toZohoDateOnly,
 } from "@/features/calendars/services/zoho-freebusy-parser";
 
 export type ZohoServiceParams = {
@@ -236,17 +237,21 @@ export class ZohoCalendarService implements CalendarService {
     const warnings: string[] = [];
 
     for (const calendarUid of calendarUids) {
+      if (!isZohoEventsApiSupported(calendarUid)) {
+        continue;
+      }
+
       const url = new URL(
         `${this.apiBase()}/calendars/${encodeURIComponent(calendarUid)}/events`,
       );
       url.searchParams.set(
         "range",
         JSON.stringify({
-          start: toZohoDate(timeMin),
-          end: toZohoDate(timeMax),
-          byinstance: true,
+          start: toZohoDateOnly(timeMin),
+          end: toZohoDateOnly(timeMax),
         }),
       );
+      url.searchParams.set("byinstance", "true");
 
       const res = await fetch(url.toString(), {
         headers: { Authorization: `Zoho-oauthtoken ${this.accessToken}` },
@@ -329,6 +334,11 @@ function isCalendarAuthError(error: unknown): boolean {
   if (!error || typeof error !== "object") return false;
   const e = error as { status?: number };
   return e.status === 401 || e.status === 403;
+}
+
+/** Group/CRM/People calendars do not expose the standard events list API. */
+export function isZohoEventsApiSupported(calendarUid: string): boolean {
+  return !/^(group_|zohoPeople_|zohoCrm_)/.test(calendarUid);
 }
 
 /**

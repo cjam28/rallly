@@ -7,7 +7,10 @@ import { env } from "@/env";
 import { fetchBusyFromIcsUrl } from "@/features/availability/providers/ics-url";
 import { createCalendarService } from "@/features/calendars/service";
 import { CalDAVCalendarService } from "@/features/calendars/services/caldav-calendar";
-import { isZohoProviderCalendarDisabled } from "@/features/calendars/services/zoho-calendar";
+import {
+  isZohoEventsApiSupported,
+  isZohoProviderCalendarDisabled,
+} from "@/features/calendars/services/zoho-calendar";
 import { refreshOAuthTokensIfNeeded } from "@/features/calendars/sync/token-refresh";
 import { truncateErrorMessage } from "@/features/calendars/sync/utils";
 import { loadCredential } from "@/features/credentials/queries";
@@ -37,6 +40,8 @@ async function upsertSyncState(params: {
   syncFrom: Date;
   status: "ok" | "error";
   error?: string;
+  connectionId?: string;
+  availabilitySourceId?: string;
 }) {
   await prisma.calendarSyncState.upsert({
     where: { sourceId: params.sourceId },
@@ -44,15 +49,21 @@ async function upsertSyncState(params: {
       userId: params.userId,
       sourceKind: params.sourceKind,
       sourceId: params.sourceId,
+      connectionId: params.connectionId,
+      availabilitySourceId: params.availabilitySourceId,
       syncFrom: params.syncFrom,
       lastSyncAt: new Date(),
       lastStatus: params.status,
-      lastError: params.error,
+      lastError: params.status === "error" ? params.error : null,
     },
     update: {
       lastSyncAt: new Date(),
       lastStatus: params.status,
-      lastError: params.error ?? null,
+      lastError: params.status === "error" ? (params.error ?? null) : null,
+      ...(params.connectionId ? { connectionId: params.connectionId } : {}),
+      ...(params.availabilitySourceId
+        ? { availabilitySourceId: params.availabilitySourceId }
+        : {}),
     },
   });
 }
@@ -183,6 +194,7 @@ export async function syncCalendarConnection(
         userId,
         sourceKind: "connection",
         sourceId: connection.id,
+        connectionId: connection.id,
         syncFrom: connection.createdAt,
         status: "ok",
       });
@@ -235,6 +247,7 @@ export async function syncCalendarConnection(
         userId,
         sourceKind: "connection",
         sourceId: connection.id,
+        connectionId: connection.id,
         syncFrom: connection.createdAt,
         status: "ok",
       });
@@ -249,6 +262,8 @@ export async function syncCalendarConnection(
       const zoho = service as InstanceType<
         typeof import("@/features/calendars/services/zoho-calendar").ZohoCalendarService
       >;
+
+      const syncableIds = selectedIds.filter(isZohoEventsApiSupported);
 
       // Fetch events per-calendar using the events API (not freebusy).
       // Batch in ≤31 day windows (Zoho API limit).
@@ -265,7 +280,7 @@ export async function syncCalendarConnection(
       for (const window of splitInto31DayWindows(rangeStart, rangeEnd)) {
         const { events: windowEvents, warnings } =
           await zoho.fetchEventsForCalendars(
-            selectedIds,
+            syncableIds,
             window.start,
             window.end,
           );
@@ -273,10 +288,16 @@ export async function syncCalendarConnection(
         fetchWarnings.push(...warnings);
       }
 
+      if (fetchWarnings.length > 0) {
+        console.warn(
+          `Zoho partial fetch warnings for ${connection.id}: ${[...new Set(fetchWarnings)].join("; ")}`,
+        );
+      }
+
       if (
-        selectedIds.length > 0 &&
+        syncableIds.length > 0 &&
         allEvents.length === 0 &&
-        fetchWarnings.length === selectedIds.length
+        fetchWarnings.length >= syncableIds.length
       ) {
         throw new Error(fetchWarnings[0] ?? "Zoho events fetch failed");
       }
@@ -295,18 +316,13 @@ export async function syncCalendarConnection(
         })),
       });
 
-      const partialWarning =
-        fetchWarnings.length > 0
-          ? truncateErrorMessage([...new Set(fetchWarnings)].join("; "))
-          : undefined;
-
       await upsertSyncState({
         userId,
         sourceKind: "connection",
         sourceId: connection.id,
+        connectionId: connection.id,
         syncFrom: connection.createdAt,
         status: "ok",
-        error: partialWarning,
       });
       return {
         sourceId: connection.id,
@@ -324,6 +340,7 @@ export async function syncCalendarConnection(
       userId,
       sourceKind: "connection",
       sourceId: connection.id,
+      connectionId: connection.id,
       syncFrom: connection.createdAt,
       status: "error",
       error: message,
@@ -376,6 +393,7 @@ export async function syncIcsSubscription(
       userId,
       sourceKind: "ics_subscription",
       sourceId: source.id,
+      availabilitySourceId: source.id,
       syncFrom: source.createdAt,
       status: "ok",
     });
@@ -388,6 +406,7 @@ export async function syncIcsSubscription(
       userId,
       sourceKind: "ics_subscription",
       sourceId: source.id,
+      availabilitySourceId: source.id,
       syncFrom: source.createdAt,
       status: "error",
       error: message,

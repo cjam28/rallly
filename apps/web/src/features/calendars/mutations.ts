@@ -69,9 +69,13 @@ export const disconnectCalendarConnection = async (
     };
   }
 
-  return await prisma.calendarConnection.delete({
-    where: { id },
-  });
+  await prisma.$transaction([
+    prisma.cachedCalendarEvent.deleteMany({ where: { sourceId: id } }),
+    prisma.calendarSyncState.deleteMany({ where: { sourceId: id } }),
+    prisma.calendarConnection.delete({ where: { id } }),
+  ]);
+
+  return { success: true };
 };
 
 /**

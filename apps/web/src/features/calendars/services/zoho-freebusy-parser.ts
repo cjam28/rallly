@@ -55,3 +55,9 @@ export function toZohoDate(d: Date): string {
     `T${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`
   );
 }
+
+/** Date-only yyyyMMdd for Zoho events API range boundaries. */
+export function toZohoDateOnly(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}`;
+}
