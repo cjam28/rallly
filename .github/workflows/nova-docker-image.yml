@@ -57,3 +57,14 @@ jobs:
             SELF_HOSTED=true
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Trigger Portainer stack redeploy
+        if: success()
+        env:
+          PORTAINER_STACK_WEBHOOK_URL: ${{ secrets.PORTAINER_STACK_WEBHOOK_URL }}
+        run: |
+          if [ -z "$PORTAINER_STACK_WEBHOOK_URL" ]; then
+            echo "::warning::PORTAINER_STACK_WEBHOOK_URL not set; skipping Portainer redeploy"
+            exit 0
+          fi
+          curl -fsS -X POST "$PORTAINER_STACK_WEBHOOK_URL"
