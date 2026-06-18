@@ -21,6 +21,7 @@ import {
 import * as React from "react";
 import { useFormContext } from "react-hook-form";
 import type { NewEventData } from "@/components/forms";
+import { dateHasBusyWindows } from "@/features/availability/lib/busy-display";
 import { Trans, useTranslation } from "@/i18n/client";
 import { dayjs } from "@/lib/dayjs";
 import {
@@ -43,6 +44,7 @@ const MonthCalendar: React.FunctionComponent<DateTimePickerProps> = ({
   onChange,
   duration,
   onChangeDuration,
+  busyWindows,
 }) => {
   const { t } = useTranslation();
   const isTimedEvent = options.some((option) => option.type === "timeSlot");
@@ -183,6 +185,9 @@ const MonthCalendar: React.FunctionComponent<DateTimePickerProps> = ({
                           "bg-muted/50 text-muted-foreground":
                             day.outOfMonth && !day.isPast,
                           "text-foreground": day.selected,
+                          "bg-rose-500/10":
+                            busyWindows &&
+                            dateHasBusyWindows(busyWindows, day.date),
                         },
                       )}
                     >

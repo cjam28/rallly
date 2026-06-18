@@ -26,6 +26,7 @@ export interface AvailabilityPreviewParams {
 
 export interface AvailabilityPreviewResult {
   slots: CandidateSlot[];
+  mergedBusy: BusyMinutes;
   busyBreakdown: Array<{
     sourceId: string;
     label: string;

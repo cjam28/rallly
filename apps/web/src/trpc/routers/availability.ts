@@ -292,16 +292,20 @@ export const availability = router({
         }
       }
 
-      // Load calendar connections for participant users
-      if (participantUserIds.length > 0) {
-        const connections = await prisma.calendarConnection.findMany({
-          where: {
-            userId: { in: [ctx.user.id, ...participantUserIds] },
-            integrationId: { in: ["google-calendar", "zoho-calendar"] },
-          },
-          include: { credential: true },
-        });
+      // Load calendar connections for current user + selected participants
+      const calendarUserIds = [
+        ctx.user.id,
+        ...participantUserIds.filter((id) => id !== ctx.user.id),
+      ];
+      const connections = await prisma.calendarConnection.findMany({
+        where: {
+          userId: { in: calendarUserIds },
+          integrationId: { in: ["google-calendar", "zoho-calendar"] },
+        },
+        include: { credential: true },
+      });
 
+      if (connections.length > 0) {
         for (const conn of connections) {
           try {
             let busy = {};
@@ -361,6 +365,6 @@ export const availability = router({
         merged,
       );
 
-      return { slots, busyBreakdown };
+      return { slots, busyBreakdown, mergedBusy: merged };
     }),
 });

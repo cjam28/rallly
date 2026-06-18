@@ -1,3 +1,5 @@
+import type { BusyMinutes } from "@/features/availability/lib/busy";
+
 export type DateOption = {
   type: "date";
   date: string;
@@ -20,4 +22,5 @@ export interface DateTimePickerProps {
   duration: number;
   onChangeDuration: (duration: number) => void;
   scrollToTime?: Date;
+  busyWindows?: BusyMinutes;
 }

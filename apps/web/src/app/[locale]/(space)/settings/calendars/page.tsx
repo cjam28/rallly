@@ -16,6 +16,7 @@ import {
   SettingsPageHeader,
   SettingsPageTitle,
 } from "@/app/components/settings-layout";
+import { AvailabilitySourcesSettings } from "@/features/availability/components/availability-sources-settings";
 import { Trans } from "@/i18n/client";
 import { getTranslation } from "@/i18n/server";
 import { isFeatureEnabled } from "@/lib/feature-flags/server";
@@ -36,6 +37,7 @@ export default async function CalendarsPage() {
   await Promise.all([
     trpc.calendars.list.prefetch(),
     trpc.calendars.getDefault.prefetch(),
+    trpc.availability.sources.list.prefetch(),
   ]);
 
   return (
@@ -76,6 +78,8 @@ export default async function CalendarsPage() {
           </PageSection>
           <PageSectionDivider />
           <CalendarConnectionList />
+          <PageSectionDivider />
+          <AvailabilitySourcesSettings />
         </SettingsPageContent>
       </SettingsPage>
     </HydrationBoundary>

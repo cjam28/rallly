@@ -6,8 +6,8 @@ import type React from "react";
 import type { CalendarProps } from "react-big-calendar";
 import { Calendar } from "react-big-calendar";
 import { createBreakpoint } from "react-use";
+import { busyMinutesToEvents } from "@/features/availability/lib/busy-display";
 import { dayjs } from "@/lib/dayjs";
-
 import { getDuration } from "../../../utils/date-time-utils";
 import DateNavigationToolbar from "./date-navigation-toolbar";
 import dayjsLocalizer from "./dayjs-localizer";
@@ -31,6 +31,7 @@ const WeekCalendar: React.FunctionComponent<DateTimePickerProps> = ({
   onChange,
   duration = 60,
   onChangeDuration,
+  busyWindows,
 }) => {
   const scrollToTime =
     options.length > 0
@@ -41,20 +42,30 @@ const WeekCalendar: React.FunctionComponent<DateTimePickerProps> = ({
 
   const defaultView = useDevice() === "mobile" ? "day" : "week";
 
+  const busyEvents = busyWindows ? busyMinutesToEvents(busyWindows) : [];
+
   return (
     <div className="relative flex h-[600px]">
       <CalendarTempFix
         className="absolute inset-0"
-        events={options.map((option) => {
-          if (option.type === "date") {
-            return { start: new Date(option.date) };
-          } else {
-            return {
-              start: new Date(option.start),
-              end: new Date(option.end),
-            };
-          }
-        })}
+        events={[
+          ...busyEvents.map((event) => ({
+            ...event,
+            title: "",
+            resource: "busy",
+          })),
+          ...options.map((option) => {
+            if (option.type === "date") {
+              return { start: new Date(option.date), resource: "option" };
+            } else {
+              return {
+                start: new Date(option.start),
+                end: new Date(option.end),
+                resource: "option",
+              };
+            }
+          }),
+        ]}
         culture="default"
         onNavigate={onNavigate}
         date={date}
@@ -63,6 +74,9 @@ const WeekCalendar: React.FunctionComponent<DateTimePickerProps> = ({
         selectable={true}
         localizer={localizer}
         onSelectEvent={(event) => {
+          if ((event as { resource?: string }).resource === "busy") {
+            return;
+          }
           onChange(
             options.filter(
               (option) =>
@@ -95,6 +109,21 @@ const WeekCalendar: React.FunctionComponent<DateTimePickerProps> = ({
             );
           },
           eventWrapper: function EventWraper(props) {
+            const isBusy =
+              (props.event as { resource?: string }).resource === "busy";
+            if (isBusy) {
+              return (
+                <div
+                  className="pointer-events-none absolute rounded-md border border-rose-500/20 bg-rose-500/15"
+                  style={{
+                    top: `calc(${props.style?.top}% + 2px)`,
+                    height: `calc(${props.style?.height}% - 4px)`,
+                    left: `${props.style?.xOffset}%`,
+                    width: `calc(${props.style?.width}%)`,
+                  }}
+                />
+              );
+            }
             const start = dayjs(props.event.start);
             const end = dayjs(props.event.end);
             return (

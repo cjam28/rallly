@@ -34,6 +34,8 @@ import useFormPersist from "react-hook-form-persist";
 import { useCopyToClipboard, useUnmount } from "react-use";
 import { PollSettingsForm } from "@/components/forms/poll-settings";
 import { useUser } from "@/components/user-provider";
+import type { AvailabilityPreviewState } from "@/features/availability/components/check-availability-section";
+import { CheckAvailabilitySection } from "@/features/availability/components/check-availability-section";
 import { Trans, useTranslation } from "@/i18n/client";
 import { trpc } from "@/trpc/client";
 import type { NewEventData } from "./forms";
@@ -84,6 +86,10 @@ export const CreatePoll: React.FunctionComponent = () => {
   useUnmount(clear);
 
   const makePoll = trpc.polls.make.useMutation();
+  const modifyPoll = trpc.polls.modify.useMutation();
+  const createSnapshot = trpc.availability.snapshot.create.useMutation();
+  const [availabilityPreview, setAvailabilityPreview] =
+    React.useState<AvailabilityPreviewState | null>(null);
 
   return (
     <Form {...form}>
@@ -91,10 +97,13 @@ export const CreatePoll: React.FunctionComponent = () => {
         onSubmit={form.handleSubmit(async (formData) => {
           const title = required(formData?.title.trim());
           await createGuestIfNeeded();
+
+          const description = formData?.description?.trim() ?? "";
+
           const res = await makePoll.mutateAsync({
             title: title,
             location: formData?.location?.trim(),
-            description: formData?.description?.trim(),
+            description: description || undefined,
             timeZone: formData?.timeZone,
             hideParticipants: formData?.hideParticipants,
             disableComments: formData?.disableComments,
@@ -107,6 +116,27 @@ export const CreatePoll: React.FunctionComponent = () => {
           });
 
           if (res.ok) {
+            if (availabilityPreview) {
+              try {
+                const snap = await createSnapshot.mutateAsync({
+                  pollId: res.data.id,
+                  previewResult: availabilityPreview.result,
+                  participantIds: availabilityPreview.participantIds,
+                  meta: {
+                    additionalSourceIds:
+                      availabilityPreview.additionalSourceIds,
+                  },
+                });
+                const snapshotUrl = `${window.location.origin}/poll/${res.data.id}?availability=${snap.token}`;
+                const snapshotNote = `\n\n---\nAvailability snapshot: ${snapshotUrl}`;
+                await modifyPoll.mutateAsync({
+                  pollId: res.data.id,
+                  description: (description + snapshotNote).trim(),
+                });
+              } catch {
+                // Snapshot is optional; poll creation already succeeded
+              }
+            }
             setCreatedPollId(res.data.id);
           } else {
             toast.error(
@@ -146,7 +176,11 @@ export const CreatePoll: React.FunctionComponent = () => {
             </CardContent>
           </Card>
 
-          <PollOptionsForm />
+          <CheckAvailabilitySection onPreviewChange={setAvailabilityPreview} />
+
+          <PollOptionsForm
+            busyWindows={availabilityPreview?.result.mergedBusy}
+          />
 
           <PollSettingsForm />
           <hr />

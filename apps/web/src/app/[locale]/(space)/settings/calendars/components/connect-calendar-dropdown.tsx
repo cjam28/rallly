@@ -8,7 +8,7 @@ import {
   DropdownMenuTrigger,
 } from "@rallly/ui/dropdown-menu";
 
-import { ChevronDownIcon, PlusIcon } from "lucide-react";
+import { CalendarIcon, ChevronDownIcon, PlusIcon } from "lucide-react";
 import Image from "next/image";
 import { connectToCalendar } from "@/features/calendars/client";
 import { Trans } from "@/i18n/client";
@@ -36,6 +36,14 @@ export function ConnectCalendarDropdown() {
             alt="Google Calendar"
           />
           <Trans i18nKey="connectGoogleCalendar" defaults="Google Calendar" />
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          onSelect={() => {
+            connectToCalendar("zoho-calendar");
+          }}
+        >
+          <CalendarIcon className="size-4" />
+          <Trans i18nKey="connectZohoCalendar" defaults="Zoho Calendar" />
         </DropdownMenuItem>
         <DropdownMenuItem
           onSelect={() => {

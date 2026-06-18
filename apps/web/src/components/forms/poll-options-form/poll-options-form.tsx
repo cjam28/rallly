@@ -38,7 +38,11 @@ export type PollOptionsData = {
 const PollOptionsForm = ({
   children,
   disableTimeZoneChange,
-}: React.PropsWithChildren<{ disableTimeZoneChange?: boolean }>) => {
+  busyWindows,
+}: React.PropsWithChildren<{
+  disableTimeZoneChange?: boolean;
+  busyWindows?: import("@/features/availability/lib/busy").BusyMinutes;
+}>) => {
   const { t } = useTranslation();
   const form = useFormContext<NewEventData>();
 
@@ -197,6 +201,7 @@ const PollOptionsForm = ({
                 onChangeDuration={(duration) => {
                   setValue("duration", duration);
                 }}
+                busyWindows={busyWindows}
               />
               {formState.errors.options ? (
                 <div className="border-t p-3 text-center text-destructive">
