@@ -416,17 +416,18 @@ export async function syncIcsSubscription(
 }
 
 /**
- * Yield non-overlapping windows of at most 31 days covering [start, end).
- * Required because the Zoho Calendar events API has a 31-day max range.
+ * Yield non-overlapping windows of at most 30 days covering [start, end).
+ * Zoho events API rejects ranges >31 days; 30-day windows stay safely under the limit.
  */
 function* splitInto31DayWindows(
   start: Date,
   end: Date,
 ): Generator<{ start: Date; end: Date }> {
+  const maxWindowDays = 30;
   let windowStart = new Date(start);
   while (windowStart < end) {
     const windowEnd = new Date(windowStart);
-    windowEnd.setDate(windowEnd.getDate() + 31);
+    windowEnd.setDate(windowEnd.getDate() + maxWindowDays);
     if (windowEnd > end) windowEnd.setTime(end.getTime());
     yield { start: windowStart, end: windowEnd };
     windowStart = new Date(windowEnd);
