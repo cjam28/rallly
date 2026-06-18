@@ -7,6 +7,7 @@ import { env } from "@/env";
 import { fetchBusyFromIcsUrl } from "@/features/availability/providers/ics-url";
 import { createCalendarService } from "@/features/calendars/service";
 import { CalDAVCalendarService } from "@/features/calendars/services/caldav-calendar";
+import { isZohoProviderCalendarDisabled } from "@/features/calendars/services/zoho-calendar";
 import { refreshOAuthTokensIfNeeded } from "@/features/calendars/sync/token-refresh";
 import { truncateErrorMessage } from "@/features/calendars/sync/utils";
 import { loadCredential } from "@/features/credentials/queries";
@@ -56,6 +57,23 @@ async function upsertSyncState(params: {
   });
 }
 
+function dedupeCachedEvents<
+  T extends {
+    externalUid: string;
+    calendarId?: string;
+    startTime: Date;
+    endTime: Date;
+    summary?: string;
+    raw?: Prisma.InputJsonValue;
+  },
+>(events: T[]): T[] {
+  const byUid = new Map<string, T>();
+  for (const evt of events) {
+    byUid.set(evt.externalUid, evt);
+  }
+  return [...byUid.values()];
+}
+
 async function replaceCachedEvents(params: {
   userId: string;
   sourceKind: string;
@@ -70,14 +88,16 @@ async function replaceCachedEvents(params: {
   }>;
 }) {
   const now = new Date();
+  const events = dedupeCachedEvents(params.events);
+
   await prisma.$transaction(async (tx) => {
     await tx.cachedCalendarEvent.deleteMany({
       where: { sourceId: params.sourceId },
     });
 
-    if (params.events.length > 0) {
+    if (events.length > 0) {
       await tx.cachedCalendarEvent.createMany({
-        data: params.events.map((evt) => ({
+        data: events.map((evt) => ({
           userId: params.userId,
           sourceKind: params.sourceKind,
           sourceId: params.sourceId,
@@ -89,6 +109,7 @@ async function replaceCachedEvents(params: {
           raw: evt.raw,
           syncedAt: now,
         })),
+        skipDuplicates: true,
       });
     }
   });
@@ -103,6 +124,10 @@ export async function syncCalendarConnection(
     include: {
       providerCalendars: {
         where: { isDeleted: false, syncMode: { not: "none" } },
+        select: {
+          providerCalendarId: true,
+          providerData: true,
+        },
       },
     },
   });
@@ -183,9 +208,12 @@ export async function syncCalendarConnection(
       email: connection.email,
     });
 
-    const selectedIds = connection.providerCalendars.map(
-      (c) => c.providerCalendarId,
-    );
+    const selectedIds =
+      connection.provider === "zoho"
+        ? connection.providerCalendars
+            .filter((c) => !isZohoProviderCalendarDisabled(c.providerData))
+            .map((c) => c.providerCalendarId)
+        : connection.providerCalendars.map((c) => c.providerCalendarId);
 
     if (connection.provider === "google") {
       const google = service as InstanceType<
@@ -224,16 +252,33 @@ export async function syncCalendarConnection(
 
       // Fetch events per-calendar using the events API (not freebusy).
       // Batch in ≤31 day windows (Zoho API limit).
-      const allEvents: Awaited<
-        ReturnType<typeof zoho.fetchEventsForCalendars>
-      > = [];
+      const allEvents: Array<{
+        uid: string;
+        calendarId: string;
+        start: Date;
+        end: Date;
+        summary?: string;
+        raw: unknown;
+      }> = [];
+      const fetchWarnings: string[] = [];
+
       for (const window of splitInto31DayWindows(rangeStart, rangeEnd)) {
-        const windowEvents = await zoho.fetchEventsForCalendars(
-          selectedIds,
-          window.start,
-          window.end,
-        );
+        const { events: windowEvents, warnings } =
+          await zoho.fetchEventsForCalendars(
+            selectedIds,
+            window.start,
+            window.end,
+          );
         allEvents.push(...windowEvents);
+        fetchWarnings.push(...warnings);
+      }
+
+      if (
+        selectedIds.length > 0 &&
+        allEvents.length === 0 &&
+        fetchWarnings.length === selectedIds.length
+      ) {
+        throw new Error(fetchWarnings[0] ?? "Zoho events fetch failed");
       }
 
       await replaceCachedEvents({
@@ -241,7 +286,7 @@ export async function syncCalendarConnection(
         sourceKind: "connection",
         sourceId: connection.id,
         events: allEvents.map((e) => ({
-          externalUid: e.uid,
+          externalUid: `${e.calendarId}:${e.uid}:${e.start.getTime()}`,
           calendarId: e.calendarId,
           startTime: e.start,
           endTime: e.end,
@@ -249,12 +294,19 @@ export async function syncCalendarConnection(
           raw: e.raw as import("@rallly/database").Prisma.InputJsonValue,
         })),
       });
+
+      const partialWarning =
+        fetchWarnings.length > 0
+          ? truncateErrorMessage([...new Set(fetchWarnings)].join("; "))
+          : undefined;
+
       await upsertSyncState({
         userId,
         sourceKind: "connection",
         sourceId: connection.id,
         syncFrom: connection.createdAt,
         status: "ok",
+        error: partialWarning,
       });
       return {
         sourceId: connection.id,

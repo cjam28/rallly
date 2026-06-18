@@ -3,7 +3,10 @@ import "server-only";
 import { prisma } from "@rallly/database";
 import { decrypt } from "@rallly/utils/encryption";
 import { env } from "@/env";
-import { ZohoCalendarService } from "@/features/calendars/services/zoho-calendar";
+import {
+  isZohoProviderCalendarDisabled,
+  ZohoCalendarService,
+} from "@/features/calendars/services/zoho-calendar";
 import type { BusyMinutes } from "../lib/busy";
 
 interface CalendarConnectionWithCredential {
@@ -50,14 +53,16 @@ export async function fetchBusyFromZohoCalendar(
       isDeleted: false,
       syncMode: "availability",
     },
-    select: { providerCalendarId: true },
+    select: { providerCalendarId: true, providerData: true },
   });
 
-  if (selectedCalendars.length === 0) {
+  const calendarUids = selectedCalendars
+    .filter((c) => !isZohoProviderCalendarDisabled(c.providerData))
+    .map((c) => c.providerCalendarId);
+
+  if (calendarUids.length === 0) {
     return { busy: {} };
   }
-
-  const calendarUids = selectedCalendars.map((c) => c.providerCalendarId);
 
   const service = new ZohoCalendarService({
     credentials: {
@@ -68,7 +73,7 @@ export async function fetchBusyFromZohoCalendar(
   });
 
   try {
-    const events = await service.fetchEventsForCalendars(
+    const { events } = await service.fetchEventsForCalendars(
       calendarUids,
       rangeStart,
       rangeEnd,

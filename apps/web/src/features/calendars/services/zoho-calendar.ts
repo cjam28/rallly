@@ -233,6 +233,7 @@ export class ZohoCalendarService implements CalendarService {
       summary?: string;
       raw: unknown;
     }> = [];
+    const warnings: string[] = [];
 
     for (const calendarUid of calendarUids) {
       const url = new URL(
@@ -252,9 +253,16 @@ export class ZohoCalendarService implements CalendarService {
       });
 
       if (!res.ok) {
-        const err = new Error(
-          `Zoho events fetch failed for ${calendarUid}: ${res.status}`,
-        ) as Error & { status?: number };
+        const body = await res.text();
+        const message = `Zoho events fetch failed for ${calendarUid}: ${res.status} ${body}`;
+
+        if (res.status === 400 || res.status === 404) {
+          console.warn(message);
+          warnings.push(message);
+          continue;
+        }
+
+        const err = new Error(message) as Error & { status?: number };
         err.status = res.status;
         throw err;
       }
@@ -287,13 +295,24 @@ export class ZohoCalendarService implements CalendarService {
       }
     }
 
-    return events;
+    return { events, warnings };
   }
 }
 
 /** Zoho `status: false` = calendar disabled (eyeball-slash); not the same as `visibility`. */
 export function isZohoCalendarDisabled(cal: { status?: boolean }): boolean {
   return cal.status === false;
+}
+
+/** True when persisted providerData marks a Zoho calendar as disabled. */
+export function isZohoProviderCalendarDisabled(providerData: unknown): boolean {
+  const raw = providerData as
+    | { status?: boolean; providerDisabled?: boolean }
+    | null
+    | undefined;
+  if (raw?.providerDisabled === true) return true;
+  if (raw?.status === false) return true;
+  return false;
 }
 
 /** Seed sync mode on first upsert from free/busy preference, not view visibility. */
