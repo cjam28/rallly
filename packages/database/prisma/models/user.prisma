@@ -73,8 +73,9 @@ model User {
   scheduledEvents       ScheduledEvent[]
   scheduledEventInvites ScheduledEventInvite[]
 
-  calendarConnections CalendarConnection[]
-  credentials         Credential[]
+  calendarConnections  CalendarConnection[]
+  credentials          Credential[]
+  availabilitySources  AvailabilitySource[]
 
   // Default destination calendar for new events
   defaultDestinationCalendarId String?           @map("default_destination_calendar_id")

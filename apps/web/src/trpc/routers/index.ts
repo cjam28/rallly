@@ -3,6 +3,7 @@ import "@/lib/dayjs";
 import { mergeRouters, router } from "../trpc";
 import { apiKeys } from "./api-keys";
 import { auth } from "./auth";
+import { availability } from "./availability";
 import { billing } from "./billing";
 import { calendars } from "./calendars";
 import { dashboard } from "./dashboard";
@@ -16,6 +17,7 @@ export const appRouter = mergeRouters(
   router({
     apiKeys,
     auth,
+    availability,
     billing,
     dashboard,
     events,

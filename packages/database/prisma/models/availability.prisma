@@ -1,0 +1,27 @@
+model AvailabilitySource {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  type      String   // "ics_url" | "caldav" | "manual"
+  label     String
+  config    Json     // type-specific config (url, server/path/creds, start/end blocks)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("availability_sources")
+}
+
+model AvailabilitySnapshot {
+  id             String   @id @default(cuid())
+  pollId         String   @unique @map("poll_id")
+  token          String   @unique @default(cuid())
+  createdAt      DateTime @default(now()) @map("created_at")
+  meta           Json
+  suggestedSlots Json     @map("suggested_slots")
+  busyBreakdown  Json     @map("busy_breakdown")
+  participantIds String[] @map("participant_ids")
+
+  @@map("availability_snapshots")
+}
