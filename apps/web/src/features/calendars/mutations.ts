@@ -302,6 +302,32 @@ export const setCalendarSelection = async (params: {
   return { success: true };
 };
 
+export const setSyncMode = async (params: {
+  userId: string;
+  calendarId: string;
+  syncMode: "none" | "display" | "availability";
+}) => {
+  const { userId, calendarId, syncMode } = params;
+
+  const calendar = await prisma.providerCalendar.findFirst({
+    where: { id: calendarId, calendarConnection: { userId } },
+  });
+
+  if (!calendar) {
+    return { success: false, error: "Calendar not found" as const };
+  }
+
+  // Keep isSelected in sync with syncMode for backward-compat queries.
+  const isSelected = syncMode !== "none";
+
+  await prisma.providerCalendar.update({
+    where: { id: calendarId },
+    data: { syncMode, isSelected },
+  });
+
+  return { success: true };
+};
+
 export const setDefaultCalendar = async ({
   userId,
   calendarId,

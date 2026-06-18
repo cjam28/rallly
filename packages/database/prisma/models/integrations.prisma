@@ -60,8 +60,13 @@ model ProviderCalendar {
   isPrimary          Boolean @default(false) @map("primary")
   timeZone           String? @map("time_zone")
 
-  // Selection and sync preferences  
+  // Selection and sync preferences
   isSelected Boolean @default(false) @map("selected")
+  // "none" | "display" | "availability"
+  // none = don't sync at all
+  // display = sync events, show in /calendar dashboard, exclude from free/busy
+  // availability = sync events + include in free/busy merge (default)
+  syncMode   String  @default("availability") @map("sync_mode")
 
   // Provider state tracking
   isDeleted  Boolean @default(false) @map("deleted")

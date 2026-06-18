@@ -221,17 +221,33 @@ export async function syncCalendarConnection(
       const zoho = service as InstanceType<
         typeof import("@/features/calendars/services/zoho-calendar").ZohoCalendarService
       >;
-      const busy = await zoho.queryFreeBusyForCalendars(
-        selectedIds,
-        rangeStart,
-        rangeEnd,
-      );
-      const events = busyToEvents(busy);
+
+      // Fetch events per-calendar using the events API (not freebusy).
+      // Batch in ≤31 day windows (Zoho API limit).
+      const allEvents: Awaited<
+        ReturnType<typeof zoho.fetchEventsForCalendars>
+      > = [];
+      for (const window of splitInto31DayWindows(rangeStart, rangeEnd)) {
+        const windowEvents = await zoho.fetchEventsForCalendars(
+          selectedIds,
+          window.start,
+          window.end,
+        );
+        allEvents.push(...windowEvents);
+      }
+
       await replaceCachedEvents({
         userId,
         sourceKind: "connection",
         sourceId: connection.id,
-        events,
+        events: allEvents.map((e) => ({
+          externalUid: e.uid,
+          calendarId: e.calendarId,
+          startTime: e.start,
+          endTime: e.end,
+          summary: e.summary,
+          raw: e.raw as import("@rallly/database").Prisma.InputJsonValue,
+        })),
       });
       await upsertSyncState({
         userId,
@@ -243,7 +259,7 @@ export async function syncCalendarConnection(
       return {
         sourceId: connection.id,
         ok: true,
-        eventCount: events.length,
+        eventCount: allEvents.length,
       };
     }
 
@@ -325,6 +341,24 @@ export async function syncIcsSubscription(
       error: message,
     });
     return { sourceId: source.id, ok: false, eventCount: 0, error: message };
+  }
+}
+
+/**
+ * Yield non-overlapping windows of at most 31 days covering [start, end).
+ * Required because the Zoho Calendar events API has a 31-day max range.
+ */
+function* splitInto31DayWindows(
+  start: Date,
+  end: Date,
+): Generator<{ start: Date; end: Date }> {
+  let windowStart = new Date(start);
+  while (windowStart < end) {
+    const windowEnd = new Date(windowStart);
+    windowEnd.setDate(windowEnd.getDate() + 31);
+    if (windowEnd > end) windowEnd.setTime(end.getTime());
+    yield { start: windowStart, end: windowEnd };
+    windowStart = new Date(windowEnd);
   }
 }
 

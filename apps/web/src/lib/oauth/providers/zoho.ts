@@ -63,6 +63,7 @@ export class ZohoOAuthClient implements OAuthClient {
     this.scopes = [
       "ZohoCalendar.freebusy.READ",
       "ZohoCalendar.calendar.READ",
+      "ZohoCalendar.event.READ",
       "AaaServer.profile.READ",
     ];
     this.onConnect = onConnect;

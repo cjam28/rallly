@@ -10,8 +10,14 @@ import {
   DropdownMenuTrigger,
 } from "@rallly/ui/dropdown-menu";
 import { Icon } from "@rallly/ui/icon";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@rallly/ui/select";
 import { toast } from "@rallly/ui/sonner";
-import { Switch } from "@rallly/ui/switch";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@rallly/ui/tooltip";
 import {
   CalendarIcon,
@@ -42,7 +48,7 @@ export function CalendarConnectionList() {
     onSuccess: () => utils.calendars.list.invalidate(),
   });
   const { t } = useTranslation();
-  const setCalendarSelection = trpc.calendars.setSelection.useMutation({
+  const setSyncMode = trpc.calendars.setSyncMode.useMutation({
     onSuccess: () => utils.calendars.list.invalidate(),
   });
 
@@ -85,7 +91,7 @@ export function CalendarConnectionList() {
           calendar.providerCalendars.map((c) => c.lastSyncedAt),
         );
         const selectedCount = calendar.providerCalendars.filter(
-          (c) => c.isSelected,
+          (c) => c.syncMode !== "none",
         ).length;
         const isSyncing =
           syncCalendar.isPending && syncCalendar.variables?.id === calendar.id;
@@ -246,15 +252,23 @@ export function CalendarConnectionList() {
               ) : null}
               <ul className="space-y-2">
                 {calendar.providerCalendars.map((c) => {
+                  const mode = (c.syncMode ?? "availability") as
+                    | "none"
+                    | "display"
+                    | "availability";
                   return (
                     <li key={c.id} className="flex items-center gap-x-4">
-                      <Switch
-                        defaultChecked={c.isSelected}
-                        onCheckedChange={(checked) => {
+                      <Select
+                        value={mode}
+                        onValueChange={(value) => {
+                          const syncMode = value as
+                            | "none"
+                            | "display"
+                            | "availability";
                           toast.promise(
-                            setCalendarSelection.mutateAsync({
+                            setSyncMode.mutateAsync({
                               calendarId: c.id,
-                              isSelected: checked,
+                              syncMode,
                             }),
                             {
                               loading: t("settingCalendarSelection", {
@@ -269,7 +283,31 @@ export function CalendarConnectionList() {
                             },
                           );
                         }}
-                      />
+                      >
+                        <SelectTrigger className="w-48">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">
+                            <Trans
+                              i18nKey="syncModeNone"
+                              defaults="Don't sync"
+                            />
+                          </SelectItem>
+                          <SelectItem value="display">
+                            <Trans
+                              i18nKey="syncModeDisplay"
+                              defaults="Display only"
+                            />
+                          </SelectItem>
+                          <SelectItem value="availability">
+                            <Trans
+                              i18nKey="syncModeAvailability"
+                              defaults="Include in availability"
+                            />
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
                       <span className="text-sm">{c.name}</span>
                     </li>
                   );

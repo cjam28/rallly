@@ -5,6 +5,7 @@ import {
   disconnectCalendarConnection,
   setCalendarSelection,
   setDefaultCalendar,
+  setSyncMode,
   syncCalendars,
 } from "@/features/calendars/mutations";
 import {
@@ -70,6 +71,20 @@ export const calendars = router({
         userId: ctx.user.id,
         calendarId: input.calendarId,
         isSelected: input.isSelected,
+      });
+    }),
+  setSyncMode: privateProcedure
+    .input(
+      z.object({
+        calendarId: z.string(),
+        syncMode: z.enum(["none", "display", "availability"]),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      return setSyncMode({
+        userId: ctx.user.id,
+        calendarId: input.calendarId,
+        syncMode: input.syncMode,
       });
     }),
   connectCalDAV: privateProcedure

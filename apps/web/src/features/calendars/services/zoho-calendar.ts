@@ -25,6 +25,7 @@ interface ZohoCalendarListItem {
   name?: string;
   isdefault?: boolean;
   timezone?: string;
+  include_infreebusy?: boolean;
 }
 
 export class ZohoCalendarService implements CalendarService {
@@ -84,7 +85,10 @@ export class ZohoCalendarService implements CalendarService {
       name: cal.name ?? "Zoho Calendar",
       timeZone: cal.timezone,
       isPrimary: Boolean(cal.isdefault),
-      isSelected: true,
+      // Seed isSelected from Zoho's own include_infreebusy setting so that
+      // the user's existing Zoho preferences are respected on initial sync.
+      // Default to true when the field is absent (e.g. primary calendar).
+      isSelected: cal.include_infreebusy !== false,
       isDeleted: false,
       isWritable: false,
       _rawData: cal,
@@ -134,6 +138,11 @@ export class ZohoCalendarService implements CalendarService {
     return merged;
   }
 
+  /**
+   * Fetch events from Zoho for multiple calendars within a time range.
+   * Uses `byinstance:true` so recurring event instances are expanded.
+   * Handles the Zoho datetime format (YYYYMMDDTHHmmss±HHmm or Z suffix).
+   */
   async fetchEventsForCalendars(
     calendarUids: string[],
     timeMin: Date,
@@ -154,32 +163,47 @@ export class ZohoCalendarService implements CalendarService {
       );
       url.searchParams.set(
         "range",
-        `${toZohoDate(timeMin)},${toZohoDate(timeMax)}`,
+        JSON.stringify({
+          start: toZohoDate(timeMin),
+          end: toZohoDate(timeMax),
+          byinstance: true,
+        }),
       );
 
       const res = await fetch(url.toString(), {
         headers: { Authorization: `Zoho-oauthtoken ${this.accessToken}` },
       });
 
-      if (!res.ok) continue;
+      if (!res.ok) {
+        const err = new Error(
+          `Zoho events fetch failed for ${calendarUid}: ${res.status}`,
+        ) as Error & { status?: number };
+        err.status = res.status;
+        throw err;
+      }
 
       const data = (await res.json()) as {
         events?: Array<{
           uid?: string;
           title?: string;
           dateandtime?: { start?: string; end?: string };
+          start?: string;
+          end?: string;
         }>;
       };
 
       for (const evt of data.events ?? []) {
-        const startRaw = evt.dateandtime?.start;
-        const endRaw = evt.dateandtime?.end;
+        const startRaw = evt.dateandtime?.start ?? evt.start;
+        const endRaw = evt.dateandtime?.end ?? evt.end;
         if (!startRaw || !endRaw) continue;
+        const start = parseZohoDatetime(startRaw);
+        const end = parseZohoDatetime(endRaw);
+        if (!start || !end) continue;
         events.push({
           uid: evt.uid ?? `${calendarUid}-${startRaw}`,
           calendarId: calendarUid,
-          start: new Date(startRaw),
-          end: new Date(endRaw),
+          start,
+          end,
           summary: evt.title,
           raw: evt,
         });
@@ -188,4 +212,25 @@ export class ZohoCalendarService implements CalendarService {
 
     return events;
   }
+}
+
+/**
+ * Parse a Zoho Calendar datetime string into a UTC Date.
+ * Accepts: YYYYMMDDTHHmmss±HHmm  |  YYYYMMDDTHHmmssZ  |  ISO strings
+ */
+function parseZohoDatetime(s: string): Date | null {
+  // Already an ISO string?
+  if (s.includes("-")) {
+    const d = new Date(s);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+  // Zoho compact format: 20260618T090000+0530 or 20260618T090000Z
+  const m = s.match(
+    /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})(Z|[+-]\d{4})$/,
+  );
+  if (!m) return null;
+  const [, yr, mo, dy, hr, mn, sc, tz] = m;
+  const tzStr = tz === "Z" ? "Z" : `${tz.slice(0, 3)}:${tz.slice(3)}`;
+  const d = new Date(`${yr}-${mo}-${dy}T${hr}:${mn}:${sc}${tzStr}`);
+  return Number.isNaN(d.getTime()) ? null : d;
 }
