@@ -19,7 +19,7 @@ import {
   SelectValue,
 } from "@rallly/ui/select";
 import { toast } from "@rallly/ui/sonner";
-import { PlusIcon, Trash2Icon } from "lucide-react";
+import { PlusIcon, RefreshCcwIcon, Trash2Icon } from "lucide-react";
 import * as React from "react";
 import {
   PageSection,
@@ -44,6 +44,24 @@ export function AvailabilitySourcesSettings() {
   const deleteSource = trpc.availability.sources.delete.useMutation({
     onSuccess: () => utils.availability.sources.list.invalidate(),
   });
+  const testSource = trpc.availability.sources.test.useMutation();
+  const [testResults, setTestResults] = React.useState<
+    Record<string, { ok: boolean; message: string }>
+  >({});
+
+  const getIcsUrl = (config: unknown): string | undefined => {
+    if (!config || typeof config !== "object") return undefined;
+    const url = (config as { url?: unknown }).url;
+    return typeof url === "string" ? url : undefined;
+  };
+
+  const truncateUrl = (url: string, max = 56) =>
+    url.length <= max ? url : `${url.slice(0, max - 1)}…`;
+
+  const runIcsTest = async (params: { id?: string; url?: string }) => {
+    const result = await testSource.mutateAsync(params);
+    return result;
+  };
 
   const addDialog = useDialog();
   const [sourceType, setSourceType] = React.useState<SourceType>("ics_url");
@@ -73,6 +91,17 @@ export function AvailabilitySourcesSettings() {
 
     let config: Record<string, unknown> = {};
     if (sourceType === "ics_url") {
+      if (!icsUrl.trim()) return;
+      const test = await runIcsTest({ url: icsUrl.trim() });
+      if (!test.ok) {
+        toast.error(
+          t("availabilitySourceTestFailed", {
+            defaultValue: "ICS feed test failed: {{error}}",
+            error: test.error,
+          }),
+        );
+        return;
+      }
       config = { url: icsUrl.trim() };
     } else if (sourceType === "caldav") {
       config = {
@@ -148,39 +177,129 @@ export function AvailabilitySourcesSettings() {
           </p>
         ) : (
           <ul className="space-y-3">
-            {sources.map((source) => (
-              <li
-                key={source.id}
-                className="flex items-center justify-between gap-4 rounded-lg border p-4"
-              >
-                <div>
-                  <p className="font-medium text-sm">{source.label}</p>
-                  <p className="text-muted-foreground text-sm capitalize">
-                    {source.type.replace("_", " ")}
-                  </p>
-                </div>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => {
-                    toast.promise(deleteSource.mutateAsync({ id: source.id }), {
-                      loading: t("availabilitySourceDeleting", {
-                        defaultValue: "Deleting…",
-                      }),
-                      success: t("availabilitySourceDeleted", {
-                        defaultValue: "Source deleted",
-                      }),
-                      error: t("availabilitySourceDeleteError", {
-                        defaultValue: "Failed to delete source",
-                      }),
-                    });
-                  }}
+            {sources.map((source) => {
+              const icsUrl = getIcsUrl(source.config);
+              const testResult = testResults[source.id];
+
+              return (
+                <li
+                  key={source.id}
+                  className="flex items-start justify-between gap-4 rounded-lg border p-4"
                 >
-                  <Trash2Icon className="size-4" />
-                </Button>
-              </li>
-            ))}
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium text-sm">{source.label}</p>
+                    <p className="text-muted-foreground text-sm capitalize">
+                      {source.type.replace("_", " ")}
+                    </p>
+                    {icsUrl ? (
+                      <p
+                        className="mt-1 truncate font-mono text-muted-foreground text-xs"
+                        title={icsUrl}
+                      >
+                        {truncateUrl(icsUrl)}
+                      </p>
+                    ) : null}
+                    {testResult ? (
+                      <p
+                        className={
+                          testResult.ok
+                            ? "mt-1 text-green-600 text-xs dark:text-green-500"
+                            : "mt-1 text-rose-600 text-xs dark:text-rose-500"
+                        }
+                      >
+                        {testResult.message}
+                      </p>
+                    ) : source.type === "ics_url" ? (
+                      <p className="mt-1 text-muted-foreground text-xs">
+                        <Trans
+                          i18nKey="icsFeedOnDemandNote"
+                          defaults="Fetched on demand when you suggest free slots on a new poll."
+                        />
+                      </p>
+                    ) : null}
+                  </div>
+                  <div className="flex shrink-0 items-center gap-1">
+                    {source.type === "ics_url" ? (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        loading={
+                          testSource.isPending &&
+                          testSource.variables?.id === source.id
+                        }
+                        onClick={async () => {
+                          try {
+                            const result = await runIcsTest({ id: source.id });
+                            setTestResults((prev) => ({
+                              ...prev,
+                              [source.id]: {
+                                ok: result.ok,
+                                message: result.ok
+                                  ? t("availabilitySourceTestSuccessInline", {
+                                      defaultValue:
+                                        "{{count}} busy windows found (next 14 days)",
+                                      count: result.busyWindowCount,
+                                    })
+                                  : result.error,
+                              },
+                            }));
+                            if (result.ok) {
+                              toast.success(
+                                t("availabilitySourceTestSuccess", {
+                                  defaultValue:
+                                    "Feed OK — {{count}} busy windows in next 14 days",
+                                  count: result.busyWindowCount,
+                                }),
+                              );
+                            } else {
+                              toast.error(
+                                t("availabilitySourceTestFailed", {
+                                  defaultValue:
+                                    "ICS feed test failed: {{error}}",
+                                  error: result.error,
+                                }),
+                              );
+                            }
+                          } catch {
+                            toast.error(
+                              t("availabilitySourceTestFailedGeneric", {
+                                defaultValue: "ICS feed test failed",
+                              }),
+                            );
+                          }
+                        }}
+                      >
+                        <RefreshCcwIcon className="size-4" />
+                      </Button>
+                    ) : null}
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => {
+                        toast.promise(
+                          deleteSource.mutateAsync({ id: source.id }),
+                          {
+                            loading: t("availabilitySourceDeleting", {
+                              defaultValue: "Deleting…",
+                            }),
+                            success: t("availabilitySourceDeleted", {
+                              defaultValue: "Source deleted",
+                            }),
+                            error: t("availabilitySourceDeleteError", {
+                              defaultValue: "Failed to delete source",
+                            }),
+                          },
+                        );
+                      }}
+                    >
+                      <Trash2Icon className="size-4" />
+                    </Button>
+                  </div>
+                </li>
+              );
+            })}
           </ul>
         )}
       </PageSectionContent>

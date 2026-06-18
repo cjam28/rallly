@@ -45,11 +45,7 @@ export function ConnectCalendarDropdown() {
           <CalendarIcon className="size-4" />
           <Trans i18nKey="connectZohoCalendar" defaults="Zoho Calendar" />
         </DropdownMenuItem>
-        <DropdownMenuItem
-          onSelect={() => {
-            connectToCalendar("outlook");
-          }}
-        >
+        <DropdownMenuItem disabled className="opacity-60">
           <Image
             src="/static/outlook.svg"
             width={16}
@@ -57,8 +53,8 @@ export function ConnectCalendarDropdown() {
             alt="Microsoft Calendar"
           />
           <Trans
-            i18nKey="connectMicrosoftCalendar"
-            defaults="Microsoft Calendar"
+            i18nKey="connectMicrosoftCalendarComingSoon"
+            defaults="Microsoft Calendar (coming soon)"
           />
         </DropdownMenuItem>
       </DropdownMenuContent>

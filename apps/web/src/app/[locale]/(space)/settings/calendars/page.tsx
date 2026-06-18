@@ -1,6 +1,7 @@
 import { dehydrate, HydrationBoundary } from "@tanstack/react-query";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { Suspense } from "react";
 import {
   PageSection,
   PageSectionContent,
@@ -22,6 +23,7 @@ import { getTranslation } from "@/i18n/server";
 import { isFeatureEnabled } from "@/lib/feature-flags/server";
 import { createPrivateSSRHelper } from "@/trpc/server/create-ssr-helper";
 import { CalendarConnectionList } from "./components/calendar-connection-list";
+import { CalendarsPageEffects } from "./components/calendars-page-effects";
 import { ConnectCalendarDropdown } from "./components/connect-calendar-dropdown";
 import { DefaultCalendarSelect } from "./components/default-calendar-select";
 
@@ -42,6 +44,9 @@ export default async function CalendarsPage() {
 
   return (
     <HydrationBoundary state={dehydrate(trpc.queryClient)}>
+      <Suspense fallback={null}>
+        <CalendarsPageEffects />
+      </Suspense>
       <SettingsPage>
         <div className="flex justify-between">
           <SettingsPageHeader>

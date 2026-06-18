@@ -32,6 +32,7 @@ import type { NewEventData } from "@/components/forms";
 import { formatDateWithoutTz } from "@/components/forms/poll-options-form/utils";
 import { useUser } from "@/components/user-provider";
 import type { AvailabilityPreviewResult } from "@/features/availability/types";
+import { connectToCalendar } from "@/features/calendars/client";
 import { Trans, useTranslation } from "@/i18n/client";
 import { trpc } from "@/trpc/client";
 import { getBrowserTimeZone } from "@/utils/date-time-utils";
@@ -192,6 +193,17 @@ export function CheckAvailabilitySection({
 
   const reconnectWarnings =
     preview?.result.busyBreakdown.filter((b) => b.reconnectRequired) ?? [];
+
+  const connectionById = React.useMemo(() => {
+    const map = new Map<string, { integrationId: string; email: string }>();
+    for (const conn of connections ?? []) {
+      map.set(conn.id, {
+        integrationId: conn.integrationId,
+        email: conn.email,
+      });
+    }
+    return map;
+  }, [connections]);
 
   return (
     <Card>
@@ -430,7 +442,7 @@ export function CheckAvailabilitySection({
                 </ul>
                 <p className="text-muted-foreground text-sm">
                   <Link
-                    href="/settings/calendars/availability"
+                    href="/settings/calendars"
                     className="text-primary underline"
                   >
                     <Trans
@@ -447,7 +459,7 @@ export function CheckAvailabilitySection({
                   defaults="Add ICS feeds, CalDAV accounts, or manual blocks in"
                 />{" "}
                 <Link
-                  href="/settings/calendars/availability"
+                  href="/settings/calendars"
                   className="text-primary underline"
                 >
                   <Trans
@@ -524,7 +536,31 @@ export function CheckAvailabilitySection({
                   />
                   <ul className="mt-2 list-inside list-disc">
                     {reconnectWarnings.map((w) => (
-                      <li key={w.sourceId}>{w.label}</li>
+                      <li
+                        key={w.sourceId}
+                        className="flex flex-wrap items-center gap-2"
+                      >
+                        <span>{w.label}</span>
+                        {connectionById.get(w.sourceId) ? (
+                          <Button
+                            type="button"
+                            variant="default"
+                            size="sm"
+                            onClick={() => {
+                              const conn = connectionById.get(w.sourceId);
+                              if (!conn) return;
+                              connectToCalendar(conn.integrationId, {
+                                redirectTo: window.location.pathname,
+                              });
+                            }}
+                          >
+                            <Trans
+                              i18nKey="reconnectCalendar"
+                              defaults="Reconnect"
+                            />
+                          </Button>
+                        ) : null}
+                      </li>
                     ))}
                   </ul>
                   <Link

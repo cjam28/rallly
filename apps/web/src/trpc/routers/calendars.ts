@@ -1,3 +1,4 @@
+import { TRPCError } from "@trpc/server";
 import * as z from "zod";
 import {
   disconnectCalendarConnection,
@@ -20,7 +21,25 @@ export const calendars = router({
   sync: privateProcedure
     .input(z.object({ id: z.string() }))
     .mutation(async ({ ctx, input }) => {
-      return syncCalendars({ userId: ctx.user.id, connectionId: input.id });
+      const result = await syncCalendars({
+        userId: ctx.user.id,
+        connectionId: input.id,
+      });
+
+      if (!result.success) {
+        if (result.error === "reconnect_required") {
+          throw new TRPCError({
+            code: "UNAUTHORIZED",
+            message: "reconnect_required",
+          });
+        }
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: result.error,
+        });
+      }
+
+      return result;
     }),
   getDefault: privateProcedure.query(async ({ ctx }) => {
     return getDefaultCalendar(ctx.user.id);

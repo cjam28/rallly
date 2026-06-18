@@ -2,6 +2,7 @@ import { prisma } from "@rallly/database";
 import { loadCredential } from "@/features/credentials/queries";
 import type { UserInfo } from "@/lib/oauth/types";
 import { createCalendarService } from "./service";
+import type { CalendarInfo } from "./services/types";
 
 export const createCalendarConnection = async (params: {
   userId: string;
@@ -104,7 +105,18 @@ export const syncCalendars = async ({
     email: connection.email,
   });
 
-  const calendars = await calendarService.listCalendars();
+  let calendars: CalendarInfo[];
+  try {
+    calendars = await calendarService.listCalendars();
+  } catch (error) {
+    if (isCalendarAuthError(error)) {
+      return {
+        success: false,
+        error: "reconnect_required" as const,
+      };
+    }
+    throw error;
+  }
 
   await prisma.$transaction(async (tx) => {
     // Get current calendar IDs from the provider response
@@ -180,6 +192,17 @@ export const syncCalendars = async ({
 
   return { success: true };
 };
+
+function isCalendarAuthError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const e = error as {
+    code?: number;
+    status?: number;
+    response?: { status?: number };
+  };
+  const status = e.status ?? e.code ?? e.response?.status;
+  return status === 401 || status === 403;
+}
 
 export const setCalendarSelection = async (params: {
   userId: string;

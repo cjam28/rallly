@@ -104,6 +104,62 @@ const sources = router({
       }
       return prisma.availabilitySource.delete({ where: { id: input.id } });
     }),
+
+  test: privateProcedure
+    .input(
+      z.object({
+        id: z.string().optional(),
+        url: z.string().url().optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      let url = input.url;
+
+      if (input.id) {
+        const source = await prisma.availabilitySource.findUnique({
+          where: { id: input.id },
+        });
+        if (!source || source.userId !== ctx.user.id) {
+          throw new TRPCError({ code: "NOT_FOUND" });
+        }
+        if (source.type !== "ics_url") {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Only ICS URL sources can be tested",
+          });
+        }
+        const config = source.config as { url?: string };
+        url = config.url;
+      }
+
+      if (!url) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "ICS URL is required",
+        });
+      }
+
+      const rangeStart = new Date();
+      const rangeEnd = new Date();
+      rangeEnd.setDate(rangeEnd.getDate() + 14);
+
+      try {
+        const { fetchBusyFromIcsUrl } = await import(
+          "@/features/availability/providers/ics-url"
+        );
+        const busy = await fetchBusyFromIcsUrl(url, rangeStart, rangeEnd);
+        return {
+          ok: true as const,
+          busyWindowCount: countBusyWindows(busy),
+        };
+      } catch (error) {
+        return {
+          ok: false as const,
+          error:
+            error instanceof Error ? error.message : "Failed to fetch ICS feed",
+        };
+      }
+    }),
 });
 
 const connections = router({
