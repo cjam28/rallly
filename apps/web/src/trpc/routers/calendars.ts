@@ -13,6 +13,7 @@ import {
   getCalendars,
   getDefaultCalendar,
 } from "@/features/calendars/queries";
+import { caldavServerUrlSchema } from "@/features/calendars/services/caldav-calendar";
 import { isFeatureEnabled } from "@/lib/feature-flags/server";
 import { privateProcedure, router, spaceProcedure } from "../trpc";
 
@@ -90,7 +91,7 @@ export const calendars = router({
   connectCalDAV: privateProcedure
     .input(
       z.object({
-        serverUrl: z.string().url(),
+        serverUrl: caldavServerUrlSchema,
         username: z.string().min(1),
         password: z.string().min(1),
         calendarPath: z.string().optional(),

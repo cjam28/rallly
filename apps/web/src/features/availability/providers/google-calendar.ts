@@ -43,8 +43,8 @@ export async function fetchBusyFromGoogleCalendar(
   const selectedCalendars = await prisma.providerCalendar.findMany({
     where: {
       calendarConnection: { id: conn.id },
-      isSelected: true,
       isDeleted: false,
+      syncMode: "availability",
     },
     select: { providerCalendarId: true },
   });

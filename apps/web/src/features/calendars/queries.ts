@@ -21,6 +21,7 @@ export const getCalendars = async (userId: string) => {
           isSelected: true,
           syncMode: true,
           lastSyncedAt: true,
+          providerData: true,
         },
         orderBy: {
           name: "asc",

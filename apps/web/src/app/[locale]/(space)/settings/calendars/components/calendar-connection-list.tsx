@@ -38,6 +38,49 @@ import { Trans, useTranslation } from "@/i18n/client";
 import { trpc } from "@/trpc/client";
 import { formatLastSynced, maxLastSyncedAt } from "./format-last-synced";
 
+const ZOHO_CATEGORY_ORDER = ["own", "app", "group", "others"] as const;
+type ZohoCategory = (typeof ZOHO_CATEGORY_ORDER)[number];
+
+const ZOHO_CATEGORY_I18N: Record<ZohoCategory, string> = {
+  own: "zohoCalendarCategoryOwn",
+  app: "zohoCalendarCategoryApp",
+  group: "zohoCalendarCategoryGroup",
+  others: "zohoCalendarCategoryOthers",
+};
+
+function getZohoCategory(providerData: unknown): ZohoCategory {
+  const data = providerData as { category?: string; caltype?: string } | null;
+  const raw = data?.category ?? data?.caltype ?? "own";
+  if (raw === "own" || raw === "app" || raw === "group" || raw === "others") {
+    return raw;
+  }
+  return "others";
+}
+
+type ProviderCalendar = {
+  id: string;
+  name: string;
+  syncMode: string | null;
+  providerData: unknown;
+};
+
+function groupZohoCalendars<T extends ProviderCalendar>(
+  calendars: T[],
+): Array<{ category: ZohoCategory; calendars: T[] }> {
+  const buckets = new Map<ZohoCategory, T[]>();
+  for (const category of ZOHO_CATEGORY_ORDER) {
+    buckets.set(category, []);
+  }
+  for (const calendar of calendars) {
+    const category = getZohoCategory(calendar.providerData);
+    buckets.get(category)?.push(calendar);
+  }
+  return ZOHO_CATEGORY_ORDER.flatMap((category) => {
+    const items = buckets.get(category) ?? [];
+    return items.length > 0 ? [{ category, calendars: items }] : [];
+  });
+}
+
 export function CalendarConnectionList() {
   const utils = trpc.useUtils();
   const { data: connections } = trpc.calendars.list.useQuery();
@@ -250,73 +293,102 @@ export function CalendarConnectionList() {
                   />
                 </p>
               ) : null}
-              <ul className="space-y-2">
-                {calendar.providerCalendars.map((c) => {
-                  const mode = (c.syncMode ?? "availability") as
-                    | "none"
-                    | "display"
-                    | "availability";
-                  return (
-                    <li key={c.id} className="flex items-center gap-x-4">
-                      <Select
-                        value={mode}
-                        onValueChange={(value) => {
-                          const syncMode = value as
-                            | "none"
-                            | "display"
-                            | "availability";
-                          toast.promise(
-                            setSyncMode.mutateAsync({
-                              calendarId: c.id,
-                              syncMode,
-                            }),
-                            {
-                              loading: t("settingCalendarSelection", {
-                                defaultValue: "Updating selection...",
-                              }),
-                              success: t("calendarSelectionSetSuccess", {
-                                defaultValue: "Calendar selection updated",
-                              }),
-                              error: t("calendarSelectionSetError", {
-                                defaultValue: "Failed to update selection",
-                              }),
-                            },
-                          );
-                        }}
-                      >
-                        <SelectTrigger className="w-48">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="none">
-                            <Trans
-                              i18nKey="syncModeNone"
-                              defaults="Don't sync"
-                            />
-                          </SelectItem>
-                          <SelectItem value="display">
-                            <Trans
-                              i18nKey="syncModeDisplay"
-                              defaults="Display only"
-                            />
-                          </SelectItem>
-                          <SelectItem value="availability">
-                            <Trans
-                              i18nKey="syncModeAvailability"
-                              defaults="Include in availability"
-                            />
-                          </SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <span className="text-sm">{c.name}</span>
-                    </li>
-                  );
-                })}
-              </ul>
+              {calendar.provider === "zoho" ? (
+                <div className="space-y-4">
+                  {groupZohoCalendars(calendar.providerCalendars).map(
+                    ({ category, calendars: groupCalendars }) => (
+                      <div key={category} className="space-y-2">
+                        <p className="font-medium text-muted-foreground text-xs uppercase tracking-wide">
+                          <Trans
+                            i18nKey={ZOHO_CATEGORY_I18N[category]}
+                            defaults={
+                              category === "own"
+                                ? "My calendars"
+                                : category === "app"
+                                  ? "App calendars"
+                                  : category === "group"
+                                    ? "Group calendars"
+                                    : "Subscribed & other"
+                            }
+                          />
+                        </p>
+                        <ul className="space-y-2">
+                          {groupCalendars.map((c) =>
+                            renderCalendarRow(c, setSyncMode, t),
+                          )}
+                        </ul>
+                      </div>
+                    ),
+                  )}
+                </div>
+              ) : (
+                <ul className="space-y-2">
+                  {calendar.providerCalendars.map((c) =>
+                    renderCalendarRow(c, setSyncMode, t),
+                  )}
+                </ul>
+              )}
             </div>
           </div>
         );
       })}
     </div>
+  );
+}
+
+function renderCalendarRow(
+  c: ProviderCalendar & { lastSyncedAt?: Date | null },
+  setSyncMode: ReturnType<typeof trpc.calendars.setSyncMode.useMutation>,
+  t: ReturnType<typeof useTranslation>["t"],
+) {
+  const mode = (c.syncMode ?? "availability") as
+    | "none"
+    | "display"
+    | "availability";
+  return (
+    <li key={c.id} className="flex items-center gap-x-4">
+      <Select
+        value={mode}
+        onValueChange={(value) => {
+          const syncMode = value as "none" | "display" | "availability";
+          toast.promise(
+            setSyncMode.mutateAsync({
+              calendarId: c.id,
+              syncMode,
+            }),
+            {
+              loading: t("settingCalendarSelection", {
+                defaultValue: "Updating selection...",
+              }),
+              success: t("calendarSelectionSetSuccess", {
+                defaultValue: "Calendar selection updated",
+              }),
+              error: t("calendarSelectionSetError", {
+                defaultValue: "Failed to update selection",
+              }),
+            },
+          );
+        }}
+      >
+        <SelectTrigger className="w-48">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="none">
+            <Trans i18nKey="syncModeNone" defaults="Don't sync" />
+          </SelectItem>
+          <SelectItem value="display">
+            <Trans i18nKey="syncModeDisplay" defaults="Display only" />
+          </SelectItem>
+          <SelectItem value="availability">
+            <Trans
+              i18nKey="syncModeAvailability"
+              defaults="Include in availability"
+            />
+          </SelectItem>
+        </SelectContent>
+      </Select>
+      <span className="text-sm">{c.name}</span>
+    </li>
   );
 }

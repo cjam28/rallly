@@ -3,6 +3,10 @@ import { syncCalendarConnection } from "@/features/calendars/sync";
 import { loadCredential } from "@/features/credentials/queries";
 import type { UserInfo } from "@/lib/oauth/types";
 import { createCalendarService } from "./service";
+import {
+  createCalDAVClientWithDiscovery,
+  normalizeCalDAVServerUrl,
+} from "./services/caldav-url";
 import type { CalendarInfo } from "./services/types";
 
 export const createCalendarConnection = async (params: {
@@ -213,7 +217,14 @@ export const connectCalDAV = async (params: {
     displayName = "CalDAV",
   } = params;
 
-  const providerAccountId = `${serverUrl}::${username}`;
+  const normalizedUrl = normalizeCalDAVServerUrl(serverUrl);
+  const { resolvedServerUrl } = await createCalDAVClientWithDiscovery({
+    serverUrl: normalizedUrl,
+    username,
+    password,
+  });
+
+  const providerAccountId = `${resolvedServerUrl}::${username}`;
 
   const { saveCalDAVCredentials } = await import(
     "@/features/credentials/caldav"
@@ -221,7 +232,12 @@ export const connectCalDAV = async (params: {
   const credential = await saveCalDAVCredentials({
     userId,
     providerAccountId,
-    credentials: { serverUrl, username, password, calendarPath },
+    credentials: {
+      serverUrl: resolvedServerUrl,
+      username,
+      password,
+      calendarPath,
+    },
   });
 
   const connection = await prisma.calendarConnection.upsert({
@@ -256,7 +272,7 @@ export const connectCalDAV = async (params: {
       serverUrl?: string;
       username?: string;
     };
-    if (cfg.serverUrl === serverUrl && cfg.username === username) {
+    if (cfg.serverUrl === resolvedServerUrl && cfg.username === username) {
       await prisma.availabilitySource.delete({ where: { id: legacy.id } });
     }
   }

@@ -102,7 +102,7 @@ export async function syncCalendarConnection(
     where: { id: connectionId, userId },
     include: {
       providerCalendars: {
-        where: { isDeleted: false, isSelected: true },
+        where: { isDeleted: false, syncMode: { not: "none" } },
       },
     },
   });

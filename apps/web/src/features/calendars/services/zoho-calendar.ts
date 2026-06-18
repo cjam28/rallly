@@ -20,12 +20,18 @@ export type ZohoServiceParams = {
   email: string;
 };
 
+const ZOHO_CALENDAR_CATEGORIES = ["own", "app", "group", "others"] as const;
+
 interface ZohoCalendarListItem {
   uid?: string;
   name?: string;
   isdefault?: boolean;
   timezone?: string;
   include_infreebusy?: boolean;
+  category?: string;
+  caltype?: string;
+  visibility?: boolean;
+  status?: boolean;
 }
 
 export class ZohoCalendarService implements CalendarService {
@@ -48,14 +54,20 @@ export class ZohoCalendarService implements CalendarService {
     return `https://calendar.zoho.${this.dc}/api/v1`;
   }
 
-  async listCalendars(): Promise<CalendarInfo[]> {
-    const res = await fetch(`${this.apiBase()}/calendars`, {
+  private async fetchCalendarsByCategory(
+    category: string,
+  ): Promise<ZohoCalendarListItem[]> {
+    const url = new URL(`${this.apiBase()}/calendars`);
+    url.searchParams.set("category", category);
+    url.searchParams.set("showhiddencal", "true");
+
+    const res = await fetch(url.toString(), {
       headers: { Authorization: `Zoho-oauthtoken ${this.accessToken}` },
     });
 
     if (!res.ok) {
       const err = new Error(
-        `Zoho list calendars failed: ${res.status} ${await res.text()}`,
+        `Zoho list calendars (${category}) failed: ${res.status} ${await res.text()}`,
       ) as Error & { status?: number };
       err.status = res.status;
       throw err;
@@ -64,8 +76,82 @@ export class ZohoCalendarService implements CalendarService {
     const data = (await res.json()) as {
       calendars?: ZohoCalendarListItem[];
     };
+    return data.calendars ?? [];
+  }
 
-    const calendars = data.calendars ?? [];
+  private async fetchAllCalendars(): Promise<ZohoCalendarListItem[]> {
+    const allUrl = new URL(`${this.apiBase()}/calendars`);
+    allUrl.searchParams.set("category", "all");
+    allUrl.searchParams.set("showhiddencal", "true");
+
+    const allRes = await fetch(allUrl.toString(), {
+      headers: { Authorization: `Zoho-oauthtoken ${this.accessToken}` },
+    });
+
+    if (allRes.ok) {
+      const data = (await allRes.json()) as {
+        calendars?: ZohoCalendarListItem[];
+      };
+      return data.calendars ?? [];
+    }
+
+    const byUid = new Map<string, ZohoCalendarListItem>();
+    for (const category of ZOHO_CALENDAR_CATEGORIES) {
+      try {
+        const calendars = await this.fetchCalendarsByCategory(category);
+        for (const cal of calendars) {
+          const key = cal.uid ?? cal.name ?? category;
+          if (!byUid.has(key)) {
+            byUid.set(key, cal);
+          }
+        }
+      } catch {
+        // Continue with other categories if one fails.
+      }
+    }
+    return [...byUid.values()];
+  }
+
+  private mapCalendarItem(cal: ZohoCalendarListItem): CalendarInfo {
+    const category = cal.category ?? cal.caltype;
+    return {
+      id: cal.uid ?? this.email,
+      name: cal.name ?? "Zoho Calendar",
+      timeZone: cal.timezone,
+      isPrimary: Boolean(cal.isdefault),
+      isSelected: cal.include_infreebusy !== false,
+      isDeleted: false,
+      isWritable: false,
+      _rawData: {
+        ...cal,
+        category,
+        caltype: cal.caltype ?? category,
+        include_infreebusy: cal.include_infreebusy,
+        visibility: cal.visibility,
+        status: cal.status,
+      },
+    };
+  }
+
+  async listCalendars(): Promise<CalendarInfo[]> {
+    let calendars: ZohoCalendarListItem[];
+    try {
+      calendars = await this.fetchAllCalendars();
+    } catch (error) {
+      if (isCalendarAuthError(error)) throw error;
+      throw error;
+    }
+
+    const deduped = new Map<string, ZohoCalendarListItem>();
+    for (const cal of calendars) {
+      const key = cal.uid;
+      if (!key) continue;
+      if (!deduped.has(key)) {
+        deduped.set(key, cal);
+      }
+    }
+    calendars = [...deduped.values()];
+
     if (calendars.length === 0) {
       return [
         {
@@ -75,24 +161,12 @@ export class ZohoCalendarService implements CalendarService {
           isSelected: true,
           isDeleted: false,
           isWritable: false,
-          _rawData: { email: this.email },
+          _rawData: { email: this.email, category: "own", caltype: "own" },
         },
       ];
     }
 
-    return calendars.map((cal) => ({
-      id: cal.uid ?? this.email,
-      name: cal.name ?? "Zoho Calendar",
-      timeZone: cal.timezone,
-      isPrimary: Boolean(cal.isdefault),
-      // Seed isSelected from Zoho's own include_infreebusy setting so that
-      // the user's existing Zoho preferences are respected on initial sync.
-      // Default to true when the field is absent (e.g. primary calendar).
-      isSelected: cal.include_infreebusy !== false,
-      isDeleted: false,
-      isWritable: false,
-      _rawData: cal,
-    }));
+    return calendars.map((cal) => this.mapCalendarItem(cal));
   }
 
   async queryFreeBusy(timeMin: Date, timeMax: Date): Promise<BusyMinutes> {
@@ -212,6 +286,12 @@ export class ZohoCalendarService implements CalendarService {
 
     return events;
   }
+}
+
+function isCalendarAuthError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const e = error as { status?: number };
+  return e.status === 401 || e.status === 403;
 }
 
 /**

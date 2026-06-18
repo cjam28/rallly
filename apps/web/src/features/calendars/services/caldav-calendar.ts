@@ -1,7 +1,10 @@
 import "server-only";
 
-import { createDAVClient } from "tsdav";
 import * as z from "zod";
+import {
+  createCalDAVClientWithDiscovery,
+  normalizeCalDAVServerUrl,
+} from "@/features/calendars/services/caldav-url";
 import type {
   CalendarInfo,
   CalendarService,
@@ -18,9 +21,14 @@ export type CalDAVServiceParams = {
   credentials: CalDAVCredentials;
 };
 
+export const caldavServerUrlSchema = z.preprocess(
+  (val) => (typeof val === "string" ? normalizeCalDAVServerUrl(val) : val),
+  z.string().url(),
+);
+
 export class CalDAVCalendarService implements CalendarService {
   static credentialsSchema = z.object({
-    serverUrl: z.string().url(),
+    serverUrl: caldavServerUrlSchema,
     username: z.string().min(1),
     password: z.string().min(1),
     calendarPath: z.string().optional(),
@@ -35,15 +43,8 @@ export class CalDAVCalendarService implements CalendarService {
   }
 
   private async getClient() {
-    return createDAVClient({
-      serverUrl: this.credentials.serverUrl,
-      credentials: {
-        username: this.credentials.username,
-        password: this.credentials.password,
-      },
-      authMethod: "Basic",
-      defaultAccountType: "caldav",
-    });
+    const { client } = await createCalDAVClientWithDiscovery(this.credentials);
+    return client;
   }
 
   async listCalendars(): Promise<CalendarInfo[]> {
