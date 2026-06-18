@@ -1,5 +1,8 @@
 "use client";
 
+import "react-big-calendar/lib/css/react-big-calendar.css";
+import "@/components/forms/poll-options-form/rbc-overrides.css";
+
 import { Button } from "@rallly/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@rallly/ui/card";
 import { Checkbox } from "@rallly/ui/checkbox";
@@ -9,7 +12,7 @@ import * as React from "react";
 import { Calendar } from "react-big-calendar";
 import { formatLastSynced } from "@/app/[locale]/(space)/settings/calendars/components/format-last-synced";
 import dayjsLocalizer from "@/components/forms/poll-options-form/dayjs-localizer";
-import { Trans } from "@/i18n/client";
+import { Trans, useTranslation } from "@/i18n/client";
 import { dayjs } from "@/lib/dayjs";
 import { trpc } from "@/trpc/client";
 
@@ -26,6 +29,7 @@ function weekRange(date = new Date()) {
 }
 
 export function CalendarDashboardView() {
+  const { t } = useTranslation();
   const [anchorDate, setAnchorDate] = React.useState(new Date());
   const [includeExternal, setIncludeExternal] = React.useState(true);
   const [includePolls, setIncludePolls] = React.useState(true);
@@ -135,22 +139,34 @@ export function CalendarDashboardView() {
             </Button>
           </div>
 
-          {data?.syncStates?.length ? (
-            <ul className="text-muted-foreground text-xs">
-              {data.syncStates.map(
-                (s: {
-                  sourceId: string;
-                  lastStatus: string;
-                  lastSyncAt: Date | null;
-                  lastError: string | null;
-                }) => (
-                  <li key={s.sourceId}>
-                    {s.sourceId}: {s.lastStatus} —{" "}
-                    {formatLastSynced(s.lastSyncAt, "Never")}
-                    {s.lastError ? ` (${s.lastError})` : ""}
+          {data?.syncStates?.some((s) => s.lastStatus === "error") ? (
+            <ul className="space-y-1 text-xs">
+              {data.syncStates
+                .filter((s) => s.lastStatus === "error")
+                .map((s) => (
+                  <li key={s.sourceId} className="text-destructive">
+                    <Trans
+                      i18nKey="calendarSyncFailed"
+                      defaults="Sync failed — check settings"
+                    />
+                    {s.lastError ? `: ${s.lastError}` : ""}
+                    <span className="text-muted-foreground">
+                      {" "}
+                      (
+                      <Trans
+                        i18nKey="lastSyncedAt"
+                        defaults="Last synced: {time}"
+                        values={{
+                          time: formatLastSynced(
+                            s.lastSyncAt,
+                            t("neverSynced", { defaultValue: "Never" }),
+                          ),
+                        }}
+                      />
+                      )
+                    </span>
                   </li>
-                ),
-              )}
+                ))}
             </ul>
           ) : null}
 
