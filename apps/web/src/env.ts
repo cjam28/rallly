@@ -99,6 +99,16 @@ export const env = createEnv({
     GOOGLE_CLIENT_SECRET: z.string().optional(),
 
     /**
+     * Zoho Calendar Integration
+     * Create a Zoho Connected App at https://api-console.zoho.com and set these vars.
+     * ZOHO_DC: data centre suffix — "com" (default), "eu", "in", "com.au", "jp"
+     * Scopes requested: ZohoCalendar.freebusy.READ, AaaServer.profile.READ
+     */
+    ZOHO_CLIENT_ID: z.string().optional(),
+    ZOHO_CLIENT_SECRET: z.string().optional(),
+    ZOHO_DC: z.string().optional().default("com"),
+
+    /**
      * Microsoft Integration
      */
     MICROSOFT_TENANT_ID: z.string().optional().default("common"),
@@ -236,6 +246,9 @@ export const env = createEnv({
     LICENSE_API_AUTH_TOKEN: process.env.LICENSE_API_AUTH_TOKEN,
     GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID,
     GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET,
+    ZOHO_CLIENT_ID: process.env.ZOHO_CLIENT_ID,
+    ZOHO_CLIENT_SECRET: process.env.ZOHO_CLIENT_SECRET,
+    ZOHO_DC: process.env.ZOHO_DC,
     MICROSOFT_TENANT_ID: process.env.MICROSOFT_TENANT_ID,
     MICROSOFT_CLIENT_ID: process.env.MICROSOFT_CLIENT_ID,
     MICROSOFT_CLIENT_SECRET: process.env.MICROSOFT_CLIENT_SECRET,

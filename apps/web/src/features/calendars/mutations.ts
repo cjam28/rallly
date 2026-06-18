@@ -101,6 +101,7 @@ export const syncCalendars = async ({
   const calendarService = await createCalendarService({
     provider: connection.provider,
     credentials: credential.secret,
+    email: connection.email,
   });
 
   const calendars = await calendarService.listCalendars();
