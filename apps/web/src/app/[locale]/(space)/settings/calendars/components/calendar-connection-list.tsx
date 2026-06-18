@@ -239,8 +239,8 @@ export function CalendarConnectionList() {
               {calendar.provider === "zoho" ? (
                 <p className="text-muted-foreground text-xs">
                   <Trans
-                    i18nKey="zohoSingleCalendarNote"
-                    defaults="Zoho connects your whole account as one calendar. Google accounts can show multiple calendars after sync."
+                    i18nKey="zohoMultiCalendarNote"
+                    defaults="After reconnecting, sync discovers individual Zoho calendars you can toggle."
                   />
                 </p>
               ) : null}

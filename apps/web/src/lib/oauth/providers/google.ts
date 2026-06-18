@@ -11,6 +11,7 @@ interface GoogleOAuthClientConfig {
   callbackUrl?: string;
   scopes: string[];
   onConnect?: (params: {
+    userId: string;
     providerAccountId: string;
     userInfo: UserInfo;
     provider: string;
@@ -25,6 +26,7 @@ export class GoogleOAuthClient implements OAuthClient {
   private clientSecret: string;
   scopes: string[];
   onConnect?: (params: {
+    userId: string;
     providerAccountId: string;
     userInfo: UserInfo;
     provider: string;

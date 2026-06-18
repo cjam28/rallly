@@ -22,6 +22,15 @@ export function CalendarProviderIcon({
           Z
         </span>
       );
+    case "caldav":
+      return (
+        <span
+          className="inline-flex items-center justify-center rounded bg-slate-600 font-bold text-[10px] text-white"
+          style={{ width: size, height: size }}
+        >
+          C
+        </span>
+      );
     default:
       return null;
   }

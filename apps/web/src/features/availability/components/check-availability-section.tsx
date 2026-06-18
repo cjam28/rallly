@@ -1,6 +1,7 @@
 "use client";
 
 import { Alert, AlertDescription, AlertTitle } from "@rallly/ui/alert";
+import { Badge } from "@rallly/ui/badge";
 import { Button } from "@rallly/ui/button";
 import {
   Card,
@@ -29,8 +30,8 @@ import Link from "next/link";
 import * as React from "react";
 import { useFormContext } from "react-hook-form";
 import type { NewEventData } from "@/components/forms";
-import { formatDateWithoutTz } from "@/components/forms/poll-options-form/utils";
 import { useUser } from "@/components/user-provider";
+import { formatNaiveInTimeZone } from "@/features/availability/lib/timezone-wall";
 import type { AvailabilityPreviewResult } from "@/features/availability/types";
 import { connectToCalendar } from "@/features/calendars/client";
 import { Trans, useTranslation } from "@/i18n/client";
@@ -131,16 +132,13 @@ export function CheckAvailabilitySection({
         "options",
         result.slots.map((slot) => ({
           type: "timeSlot" as const,
-          start: formatDateWithoutTz(new Date(slot.startISO)),
-          end: formatDateWithoutTz(new Date(slot.endISO)),
+          start: formatNaiveInTimeZone(slot.startISO, timeZone),
+          end: formatNaiveInTimeZone(slot.endISO, timeZone),
         })),
       );
       form.setValue("view", "week");
       if (result.slots[0]) {
-        form.setValue(
-          "navigationDate",
-          new Date(result.slots[0].startISO).toISOString(),
-        );
+        form.setValue("navigationDate", `${result.slots[0].startISO}`);
       }
 
       const state: AvailabilityPreviewState = {
@@ -152,7 +150,8 @@ export function CheckAvailabilitySection({
       onPreviewChange(state);
       toast.success(
         t("availabilitySlotsApplied", {
-          defaultValue: "{{count}} time slots added to your poll",
+          defaultValue:
+            "{count, plural, one {# time slot added to your poll} other {# time slots added to your poll}}",
           count: result.slots.length,
         }),
       );
@@ -500,12 +499,41 @@ export function CheckAvailabilitySection({
                       className="flex items-center justify-between gap-2 rounded-md border bg-background px-3 py-2"
                     >
                       <span>{row.label}</span>
-                      <span className="text-muted-foreground">
-                        {row.busyWindowCount}{" "}
-                        <Trans
-                          i18nKey="availabilityBusyWindows"
-                          defaults="busy windows"
-                        />
+                      <span className="flex items-center gap-2">
+                        {row.fetchFailed ? (
+                          <Badge variant="destructive">
+                            <Trans
+                              i18nKey="availabilityFetchFailed"
+                              defaults="Fetch failed"
+                            />
+                          </Badge>
+                        ) : null}
+                        {row.reconnectRequired ? (
+                          <Badge variant="secondary">
+                            <Trans
+                              i18nKey="availabilityReconnectRequired"
+                              defaults="Reconnect required"
+                            />
+                          </Badge>
+                        ) : null}
+                        <span className="text-muted-foreground">
+                          {row.fetchFailed ? (
+                            <span
+                              className="max-w-[12rem] truncate text-rose-600 text-xs dark:text-rose-500"
+                              title={row.errorMessage}
+                            >
+                              {row.errorMessage ?? "—"}
+                            </span>
+                          ) : (
+                            <>
+                              {row.busyWindowCount}{" "}
+                              <Trans
+                                i18nKey="availabilityBusyWindows"
+                                defaults="busy windows"
+                              />
+                            </>
+                          )}
+                        </span>
                       </span>
                     </li>
                   ))}
@@ -513,8 +541,8 @@ export function CheckAvailabilitySection({
                 <p className="text-muted-foreground text-sm">
                   <Trans
                     i18nKey="availabilitySuggestedCount"
-                    defaults="{{count}} free slots suggested"
-                    count={preview.result.slots.length}
+                    defaults="{count, plural, one {# free slot suggested} other {# free slots suggested}}"
+                    values={{ count: preview.result.slots.length }}
                   />
                 </p>
               </div>

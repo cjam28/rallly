@@ -12,6 +12,7 @@ const withBundleAnalyzer = createBundleAnalyzer({
 });
 
 const nextConfig: NextConfig = {
+  serverExternalPackages: ["node-ical", "rrule", "tsdav"],
   allowedDevOrigins: ["web.rallly.localhost"],
   experimental: {
     staleTimes: {

@@ -1,5 +1,6 @@
 import "server-only";
 
+import { prisma } from "@rallly/database";
 import { decrypt } from "@rallly/utils/encryption";
 import { env } from "@/env";
 import { ZohoCalendarService } from "@/features/calendars/services/zoho-calendar";
@@ -39,6 +40,17 @@ export async function fetchBusyFromZohoCalendar(
     return { busy: {}, reconnectRequired: true };
   }
 
+  const selectedCalendars = await prisma.providerCalendar.findMany({
+    where: {
+      calendarConnection: { id: conn.id },
+      isSelected: true,
+      isDeleted: false,
+    },
+    select: { providerCalendarId: true },
+  });
+
+  const calendarUids = selectedCalendars.map((c) => c.providerCalendarId);
+
   const service = new ZohoCalendarService({
     credentials: {
       accessToken: tokens.accessToken,
@@ -48,7 +60,11 @@ export async function fetchBusyFromZohoCalendar(
   });
 
   try {
-    const busy = await service.queryFreeBusy(rangeStart, rangeEnd);
+    const busy = await service.queryFreeBusyForCalendars(
+      calendarUids,
+      rangeStart,
+      rangeEnd,
+    );
     return { busy };
   } catch (err) {
     const status = (err as { status?: number }).status;

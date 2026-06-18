@@ -9,6 +9,7 @@ interface ZohoOAuthClientConfig {
   dc?: string;
   callbackUrl?: string;
   onConnect?: (params: {
+    userId: string;
     providerAccountId: string;
     userInfo: UserInfo;
     provider: string;
@@ -41,6 +42,7 @@ export class ZohoOAuthClient implements OAuthClient {
   private callbackUrl: string;
   scopes: string[];
   onConnect?: (params: {
+    userId: string;
     providerAccountId: string;
     userInfo: UserInfo;
     provider: string;
@@ -58,7 +60,11 @@ export class ZohoOAuthClient implements OAuthClient {
     this.clientSecret = clientSecret;
     this.dc = dc;
     this.callbackUrl = callbackUrl;
-    this.scopes = ["ZohoCalendar.freebusy.READ", "AaaServer.profile.READ"];
+    this.scopes = [
+      "ZohoCalendar.freebusy.READ",
+      "ZohoCalendar.calendar.READ",
+      "AaaServer.profile.READ",
+    ];
     this.onConnect = onConnect;
   }
 

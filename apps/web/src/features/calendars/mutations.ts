@@ -1,4 +1,5 @@
 import { prisma } from "@rallly/database";
+import { syncCalendarConnection } from "@/features/calendars/sync";
 import { loadCredential } from "@/features/credentials/queries";
 import type { UserInfo } from "@/lib/oauth/types";
 import { createCalendarService } from "./service";
@@ -190,7 +191,79 @@ export const syncCalendars = async ({
     }
   });
 
+  await syncCalendarConnection(userId, connectionId);
+
   return { success: true };
+};
+
+export const connectCalDAV = async (params: {
+  userId: string;
+  serverUrl: string;
+  username: string;
+  password: string;
+  calendarPath?: string;
+  displayName?: string;
+}) => {
+  const {
+    userId,
+    serverUrl,
+    username,
+    password,
+    calendarPath,
+    displayName = "CalDAV",
+  } = params;
+
+  const providerAccountId = `${serverUrl}::${username}`;
+
+  const { saveCalDAVCredentials } = await import(
+    "@/features/credentials/caldav"
+  );
+  const credential = await saveCalDAVCredentials({
+    userId,
+    providerAccountId,
+    credentials: { serverUrl, username, password, calendarPath },
+  });
+
+  const connection = await prisma.calendarConnection.upsert({
+    where: {
+      user_provider_account_unique: {
+        userId,
+        provider: "caldav",
+        providerAccountId,
+      },
+    },
+    create: {
+      userId,
+      provider: "caldav",
+      integrationId: "caldav",
+      credentialId: credential.id,
+      providerAccountId,
+      email: username,
+      displayName,
+    },
+    update: {
+      credentialId: credential.id,
+      displayName,
+    },
+  });
+
+  // Migrate legacy AvailabilitySource caldav rows for this user
+  const legacySources = await prisma.availabilitySource.findMany({
+    where: { userId, type: "caldav" },
+  });
+  for (const legacy of legacySources) {
+    const cfg = legacy.config as {
+      serverUrl?: string;
+      username?: string;
+    };
+    if (cfg.serverUrl === serverUrl && cfg.username === username) {
+      await prisma.availabilitySource.delete({ where: { id: legacy.id } });
+    }
+  }
+
+  await syncCalendars({ userId, connectionId: connection.id });
+
+  return connection;
 };
 
 function isCalendarAuthError(error: unknown): boolean {

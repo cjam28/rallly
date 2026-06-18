@@ -1,5 +1,6 @@
 enum CredentialType {
   OAUTH
+  CALDAV
 }
 
 model Credential {

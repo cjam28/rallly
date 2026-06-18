@@ -1,5 +1,10 @@
 import type { BusyMinutes } from "../lib/busy";
 import { isSlotBusy } from "../lib/busy";
+import {
+  dayOfWeekInTimeZone,
+  incrementDateKey,
+  wallTimeToUtc,
+} from "./timezone-wall";
 
 export interface CandidateSlot {
   id: string;
@@ -18,12 +23,7 @@ export interface SlotOptions {
   workdayStartHour: number;
   workdayEndHour: number;
   excludeWeekends?: boolean;
-  timezone?: string;
-}
-
-function toDateKey(d: Date): string {
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}`;
+  timeZone: string;
 }
 
 function formatTime(minutes: number): string {
@@ -34,18 +34,24 @@ function formatTime(minutes: number): string {
   return `${h12}:${String(m).padStart(2, "0")} ${period}`;
 }
 
-function formatSlotLabel(date: Date, startMin: number, endMin: number): string {
-  const dayStr = date.toLocaleDateString("en-US", {
+function formatSlotLabel(
+  dateKey: string,
+  startMin: number,
+  endMin: number,
+  timeZone: string,
+): string {
+  const probe = wallTimeToUtc(dateKey, startMin, timeZone);
+  const dayStr = new Intl.DateTimeFormat("en-US", {
+    timeZone,
     weekday: "short",
     month: "short",
     day: "numeric",
-  });
+  }).format(probe);
   return `${dayStr}, ${formatTime(startMin)} – ${formatTime(endMin)}`;
 }
 
 /**
- * Generate all candidate time slots across the date range,
- * filtering out any that overlap the merged busy windows.
+ * Generate candidate time slots in the poll timezone, filtering overlaps with busy windows.
  */
 export function generateFreeSlots(
   options: SlotOptions,
@@ -58,40 +64,33 @@ export function generateFreeSlots(
     workdayStartHour,
     workdayEndHour,
     excludeWeekends = true,
+    timeZone,
   } = options;
 
   const slots: CandidateSlot[] = [];
-  const cursor = new Date(`${startDate}T00:00:00Z`);
-  const end = new Date(`${endDate}T23:59:59Z`);
+  let dateKey = startDate.replace(/-/g, "");
+  const endKey = endDate.replace(/-/g, "");
 
-  while (cursor <= end) {
-    const dow = cursor.getUTCDay(); // 0=Sun, 6=Sat
+  while (dateKey <= endKey) {
+    const dayProbe = wallTimeToUtc(dateKey, 12 * 60, timeZone);
+    const dow = dayOfWeekInTimeZone(dayProbe, timeZone);
+
     if (!excludeWeekends || (dow !== 0 && dow !== 6)) {
-      const dateKey = toDateKey(cursor);
       let startMin = workdayStartHour * 60;
-      const endMin = workdayEndHour * 60;
+      const dayEndMin = workdayEndHour * 60;
 
-      while (startMin + slotDurationMins <= endMin) {
+      while (startMin + slotDurationMins <= dayEndMin) {
         const slotEnd = startMin + slotDurationMins;
 
         if (!isSlotBusy(busy, dateKey, startMin, slotEnd)) {
-          const slotStartDate = new Date(cursor);
-          slotStartDate.setUTCHours(
-            Math.floor(startMin / 60),
-            startMin % 60,
-            0,
-            0,
-          );
-          const slotEndDate = new Date(slotStartDate);
-          slotEndDate.setUTCMinutes(
-            slotEndDate.getUTCMinutes() + slotDurationMins,
-          );
+          const slotStartUtc = wallTimeToUtc(dateKey, startMin, timeZone);
+          const slotEndUtc = wallTimeToUtc(dateKey, slotEnd, timeZone);
 
           slots.push({
-            id: slotStartDate.toISOString(),
-            startISO: slotStartDate.toISOString(),
-            endISO: slotEndDate.toISOString(),
-            label: formatSlotLabel(slotStartDate, startMin, slotEnd),
+            id: slotStartUtc.toISOString(),
+            startISO: slotStartUtc.toISOString(),
+            endISO: slotEndUtc.toISOString(),
+            label: formatSlotLabel(dateKey, startMin, slotEnd, timeZone),
             dateKey,
             startMin,
             endMin: slotEnd,
@@ -101,7 +100,8 @@ export function generateFreeSlots(
         startMin += slotDurationMins;
       }
     }
-    cursor.setUTCDate(cursor.getUTCDate() + 1);
+
+    dateKey = incrementDateKey(dateKey);
   }
 
   return slots;

@@ -1,13 +1,19 @@
 import { TRPCError } from "@trpc/server";
 import * as z from "zod";
 import {
+  connectCalDAV,
   disconnectCalendarConnection,
   setCalendarSelection,
   setDefaultCalendar,
   syncCalendars,
 } from "@/features/calendars/mutations";
-import { getCalendars, getDefaultCalendar } from "@/features/calendars/queries";
-import { privateProcedure, router } from "../trpc";
+import {
+  getCalendarDashboardData,
+  getCalendars,
+  getDefaultCalendar,
+} from "@/features/calendars/queries";
+import { isFeatureEnabled } from "@/lib/feature-flags/server";
+import { privateProcedure, router, spaceProcedure } from "../trpc";
 
 export const calendars = router({
   list: privateProcedure.query(async ({ ctx }) => {
@@ -64,6 +70,44 @@ export const calendars = router({
         userId: ctx.user.id,
         calendarId: input.calendarId,
         isSelected: input.isSelected,
+      });
+    }),
+  connectCalDAV: privateProcedure
+    .input(
+      z.object({
+        serverUrl: z.string().url(),
+        username: z.string().min(1),
+        password: z.string().min(1),
+        calendarPath: z.string().optional(),
+        displayName: z.string().optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      return connectCalDAV({
+        userId: ctx.user.id,
+        ...input,
+      });
+    }),
+  dashboard: spaceProcedure
+    .input(
+      z.object({
+        startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      }),
+    )
+    .query(async ({ ctx, input }) => {
+      if (!isFeatureEnabled("calendars")) {
+        throw new TRPCError({ code: "NOT_FOUND" });
+      }
+
+      const rangeStart = new Date(`${input.startDate}T00:00:00`);
+      const rangeEnd = new Date(`${input.endDate}T23:59:59`);
+
+      return getCalendarDashboardData({
+        userId: ctx.user.id,
+        spaceId: ctx.space.id,
+        rangeStart,
+        rangeEnd,
       });
     }),
 });

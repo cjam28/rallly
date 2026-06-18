@@ -17,7 +17,8 @@ import {
   SettingsPageHeader,
   SettingsPageTitle,
 } from "@/app/components/settings-layout";
-import { AvailabilitySourcesSettings } from "@/features/availability/components/availability-sources-settings";
+import { ManualBlocksSettings } from "@/features/availability/components/manual-blocks-settings";
+import { SubscriptionFeedsSettings } from "@/features/availability/components/subscription-feeds-settings";
 import { Trans } from "@/i18n/client";
 import { getTranslation } from "@/i18n/server";
 import { isFeatureEnabled } from "@/lib/feature-flags/server";
@@ -82,9 +83,29 @@ export default async function CalendarsPage() {
             </PageSectionContent>
           </PageSection>
           <PageSectionDivider />
-          <CalendarConnectionList />
+          <PageSection variant="card">
+            <PageSectionHeader>
+              <PageSectionTitle>
+                <Trans
+                  i18nKey="connectedCalendars"
+                  defaults="Connected calendars"
+                />
+              </PageSectionTitle>
+              <PageSectionDescription>
+                <Trans
+                  i18nKey="connectedCalendarsDescription"
+                  defaults="OAuth and CalDAV accounts with per-calendar availability toggles."
+                />
+              </PageSectionDescription>
+            </PageSectionHeader>
+            <PageSectionContent>
+              <CalendarConnectionList />
+            </PageSectionContent>
+          </PageSection>
           <PageSectionDivider />
-          <AvailabilitySourcesSettings />
+          <SubscriptionFeedsSettings />
+          <PageSectionDivider />
+          <ManualBlocksSettings />
         </SettingsPageContent>
       </SettingsPage>
     </HydrationBoundary>

@@ -2,7 +2,10 @@ import type { BusyMinutes } from "./lib/busy";
 import type { CandidateSlot } from "./lib/slot-generator";
 
 export type AvailabilitySourceType = "ics_url" | "caldav" | "manual";
-export type CalendarConnectionProvider = "google-calendar" | "zoho-calendar";
+export type CalendarConnectionProvider =
+  | "google-calendar"
+  | "zoho-calendar"
+  | "caldav";
 
 export interface AvailabilityProviderResult {
   sourceId: string;
@@ -32,5 +35,7 @@ export interface AvailabilityPreviewResult {
     label: string;
     busyWindowCount: number;
     reconnectRequired?: boolean;
+    fetchFailed?: boolean;
+    errorMessage?: string;
   }>;
 }

@@ -2,21 +2,25 @@ import "server-only";
 
 import type { Prisma } from "@rallly/database";
 import { prisma } from "@rallly/database";
-import { createLogger } from "@rallly/logger";
 import { TRPCError } from "@trpc/server";
 import * as z from "zod";
 import type { BusyMinutes } from "@/features/availability/lib/busy";
 import { mergeBusy } from "@/features/availability/lib/busy";
 import { generateFreeSlots } from "@/features/availability/lib/slot-generator";
+import { normalizeBusyToTimezone } from "@/features/availability/lib/timezone-busy";
 import {
   createSnapshot,
   getSnapshotByPollId,
   getSnapshotByToken,
 } from "@/features/availability/mutations/snapshots";
 import type { AvailabilityPreviewResult } from "@/features/availability/types";
+import {
+  syncCalendarConnection,
+  syncIcsSubscription,
+} from "@/features/calendars/sync";
+import { getBusyFromCacheForSources } from "@/features/calendars/sync/busyFromCache";
+import { truncateErrorMessage } from "@/features/calendars/sync/utils";
 import { privateProcedure, router } from "../trpc";
-
-const availabilityLogger = createLogger("availability");
 
 const jsonRecordSchema = z.record(z.string(), z.unknown());
 
@@ -31,6 +35,13 @@ function countBusyWindows(busy: BusyMinutes): number {
     (sum, arr) => sum + (Array.isArray(arr) ? arr.length : 0),
     0,
   );
+}
+
+function normalizeProviderBusy(
+  busy: BusyMinutes,
+  timeZone: string,
+): BusyMinutes {
+  return normalizeBusyToTimezone(busy, timeZone);
 }
 
 const previewParamsSchema = z.object({
@@ -57,7 +68,7 @@ const sources = router({
   create: privateProcedure
     .input(availabilitySourceSchema)
     .mutation(async ({ ctx, input }) => {
-      return prisma.availabilitySource.create({
+      const source = await prisma.availabilitySource.create({
         data: {
           userId: ctx.user.id,
           type: input.type,
@@ -65,6 +76,14 @@ const sources = router({
           config: input.config as unknown as Prisma.InputJsonValue,
         },
       });
+
+      if (input.type === "ics_url") {
+        await syncIcsSubscription(ctx.user.id, source.id).catch(
+          () => undefined,
+        );
+      }
+
+      return source;
     }),
 
   update: privateProcedure
@@ -167,7 +186,9 @@ const connections = router({
     return prisma.calendarConnection.findMany({
       where: {
         userId: ctx.user.id,
-        integrationId: { in: ["google-calendar", "zoho-calendar"] },
+        integrationId: {
+          in: ["google-calendar", "zoho-calendar", "caldav"],
+        },
       },
       select: {
         id: true,
@@ -203,6 +224,8 @@ const snapshot = router({
               label: z.string(),
               busyWindowCount: z.number(),
               reconnectRequired: z.boolean().optional(),
+              fetchFailed: z.boolean().optional(),
+              errorMessage: z.string().optional(),
             }),
           ),
         }),
@@ -276,6 +299,7 @@ export const availability = router({
         workdayStartHour,
         workdayEndHour,
         excludeWeekends,
+        timeZone,
       } = input;
 
       const rangeStart = new Date(`${startDate}T00:00:00Z`);
@@ -284,7 +308,6 @@ export const availability = router({
       const busyBreakdown: AvailabilityPreviewResult["busyBreakdown"] = [];
       const allBusy: BusyMinutes[] = [];
 
-      // Load ICS / CalDAV / manual sources
       if (additionalSourceIds.length > 0) {
         const dbSources = await prisma.availabilitySource.findMany({
           where: {
@@ -293,16 +316,39 @@ export const availability = router({
           },
         });
 
+        const icsIds = dbSources
+          .filter((s) => s.type === "ics_url")
+          .map((s) => s.id);
+        const cacheResults = await getBusyFromCacheForSources({
+          userId: ctx.user.id,
+          sourceIds: icsIds,
+          rangeStart,
+          rangeEnd,
+          timeZone,
+        });
+
         for (const source of dbSources) {
           try {
-            let busy = {};
+            let busy: BusyMinutes = {};
+
             if (source.type === "ics_url") {
-              const { fetchBusyFromIcsUrl } = await import(
-                "@/features/availability/providers/ics-url"
-              );
-              const cfg = source.config as { url?: string };
-              if (cfg.url) {
-                busy = await fetchBusyFromIcsUrl(cfg.url, rangeStart, rangeEnd);
+              const cached = cacheResults.get(source.id);
+              if (cached?.fromCache && !cached.stale) {
+                busy = cached.busy;
+              } else {
+                const { fetchBusyFromIcsUrl } = await import(
+                  "@/features/availability/providers/ics-url"
+                );
+                const cfg = source.config as { url?: string };
+                if (cfg.url) {
+                  busy = normalizeProviderBusy(
+                    await fetchBusyFromIcsUrl(cfg.url, rangeStart, rangeEnd),
+                    timeZone,
+                  );
+                  await syncIcsSubscription(ctx.user.id, source.id).catch(
+                    () => undefined,
+                  );
+                }
               }
             } else if (source.type === "caldav") {
               const { fetchBusyFromCalDAV } = await import(
@@ -315,15 +361,18 @@ export const availability = router({
                 calendarPath?: string;
               };
               if (cfg.serverUrl && cfg.username && cfg.password) {
-                busy = await fetchBusyFromCalDAV(
-                  {
-                    serverUrl: cfg.serverUrl,
-                    username: cfg.username,
-                    password: cfg.password,
-                    calendarPath: cfg.calendarPath,
-                  },
-                  rangeStart,
-                  rangeEnd,
+                busy = normalizeProviderBusy(
+                  await fetchBusyFromCalDAV(
+                    {
+                      serverUrl: cfg.serverUrl,
+                      username: cfg.username,
+                      password: cfg.password,
+                      calendarPath: cfg.calendarPath,
+                    },
+                    rangeStart,
+                    rangeEnd,
+                  ),
+                  timeZone,
                 );
               }
             } else if (source.type === "manual") {
@@ -333,53 +382,32 @@ export const availability = router({
               const cfg = source.config as {
                 blocks?: Array<{ startISO: string; endISO: string }>;
               };
-              busy = busyFromManualBlocks(cfg.blocks ?? []);
+              busy = normalizeProviderBusy(
+                busyFromManualBlocks(cfg.blocks ?? []),
+                timeZone,
+              );
             }
+
             allBusy.push(busy);
-            const windowCount = countBusyWindows(busy as BusyMinutes);
             busyBreakdown.push({
               sourceId: source.id,
               label: source.label,
-              busyWindowCount: windowCount,
+              busyWindowCount: countBusyWindows(busy),
             });
-            // #region agent log
-            availabilityLogger.info(
-              {
-                hypothesisId: "H2-ics-sync",
-                sourceId: source.id,
-                sourceType: source.type,
-                label: source.label,
-                busyWindowCount: windowCount,
-              },
-              "Availability source fetched",
-            );
-            // #endregion
           } catch (error) {
-            // #region agent log
-            availabilityLogger.warn(
-              {
-                hypothesisId: "H2-ics-sync",
-                sourceId: source.id,
-                sourceType: source.type,
-                label: source.label,
-                error:
-                  error instanceof Error
-                    ? error.message
-                    : "unknown fetch error",
-              },
-              "Availability source fetch failed",
-            );
-            // #endregion
             busyBreakdown.push({
               sourceId: source.id,
               label: source.label,
               busyWindowCount: 0,
+              fetchFailed: true,
+              errorMessage: truncateErrorMessage(
+                error instanceof Error ? error.message : "Fetch failed",
+              ),
             });
           }
         }
       }
 
-      // Load calendar connections for current user + selected participants
       const calendarUserIds = [
         ctx.user.id,
         ...participantUserIds.filter((id) => id !== ctx.user.id),
@@ -387,18 +415,32 @@ export const availability = router({
       const connections = await prisma.calendarConnection.findMany({
         where: {
           userId: { in: calendarUserIds },
-          integrationId: { in: ["google-calendar", "zoho-calendar"] },
+          integrationId: {
+            in: ["google-calendar", "zoho-calendar", "caldav"],
+          },
         },
         include: { credential: true },
       });
 
       if (connections.length > 0) {
+        const connectionIds = connections.map((c) => c.id);
+        const cacheResults = await getBusyFromCacheForSources({
+          userId: ctx.user.id,
+          sourceIds: connectionIds,
+          rangeStart,
+          rangeEnd,
+          timeZone,
+        });
+
         for (const conn of connections) {
           try {
-            let busy = {};
+            let busy: BusyMinutes = {};
             let reconnectRequired = false;
+            const cached = cacheResults.get(conn.id);
 
-            if (conn.integrationId === "google-calendar") {
+            if (cached?.fromCache && !cached.stale) {
+              busy = cached.busy;
+            } else if (conn.integrationId === "google-calendar") {
               const { fetchBusyFromGoogleCalendar } = await import(
                 "@/features/availability/providers/google-calendar"
               );
@@ -407,8 +449,13 @@ export const availability = router({
                 rangeStart,
                 rangeEnd,
               );
-              busy = result.busy;
+              busy = normalizeProviderBusy(result.busy, timeZone);
               reconnectRequired = result.reconnectRequired ?? false;
+              if (!reconnectRequired) {
+                await syncCalendarConnection(conn.userId, conn.id).catch(
+                  () => undefined,
+                );
+              }
             } else if (conn.integrationId === "zoho-calendar") {
               const { fetchBusyFromZohoCalendar } = await import(
                 "@/features/availability/providers/zoho-calendar"
@@ -418,22 +465,47 @@ export const availability = router({
                 rangeStart,
                 rangeEnd,
               );
-              busy = result.busy;
+              busy = normalizeProviderBusy(result.busy, timeZone);
               reconnectRequired = result.reconnectRequired ?? false;
+              if (!reconnectRequired) {
+                await syncCalendarConnection(conn.userId, conn.id).catch(
+                  () => undefined,
+                );
+              }
+            } else if (conn.integrationId === "caldav") {
+              const { fetchBusyFromCalDAVConnection } = await import(
+                "@/features/availability/providers/caldav-connection"
+              );
+              const result = await fetchBusyFromCalDAVConnection(
+                conn,
+                rangeStart,
+                rangeEnd,
+              );
+              busy = normalizeProviderBusy(result.busy, timeZone);
+              reconnectRequired = result.reconnectRequired ?? false;
+              if (!reconnectRequired) {
+                await syncCalendarConnection(conn.userId, conn.id).catch(
+                  () => undefined,
+                );
+              }
             }
 
             allBusy.push(busy);
             busyBreakdown.push({
               sourceId: conn.id,
               label: conn.displayName ?? conn.email,
-              busyWindowCount: countBusyWindows(busy as BusyMinutes),
+              busyWindowCount: countBusyWindows(busy),
               reconnectRequired,
             });
-          } catch {
+          } catch (error) {
             busyBreakdown.push({
               sourceId: conn.id,
               label: conn.displayName ?? conn.email,
               busyWindowCount: 0,
+              fetchFailed: true,
+              errorMessage: truncateErrorMessage(
+                error instanceof Error ? error.message : "Fetch failed",
+              ),
             });
           }
         }
@@ -448,6 +520,7 @@ export const availability = router({
           workdayStartHour,
           workdayEndHour,
           excludeWeekends,
+          timeZone,
         },
         merged,
       );

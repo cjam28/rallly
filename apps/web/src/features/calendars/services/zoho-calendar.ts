@@ -20,6 +20,13 @@ export type ZohoServiceParams = {
   email: string;
 };
 
+interface ZohoCalendarListItem {
+  uid?: string;
+  name?: string;
+  isdefault?: boolean;
+  timezone?: string;
+}
+
 export class ZohoCalendarService implements CalendarService {
   static credentialsSchema = z.object({
     accessToken: z.string(),
@@ -36,46 +43,149 @@ export class ZohoCalendarService implements CalendarService {
     this.dc = env.ZOHO_DC ?? "com";
   }
 
-  async listCalendars(): Promise<CalendarInfo[]> {
-    return [
-      {
-        id: this.email,
-        name: "Zoho Calendar",
-        isPrimary: true,
-        isSelected: true,
-        isDeleted: false,
-        isWritable: false,
-        _rawData: { email: this.email },
-      },
-    ];
+  private apiBase(): string {
+    return `https://calendar.zoho.${this.dc}/api/v1`;
   }
 
-  /**
-   * Query Zoho Calendar free/busy API for the connected user.
-   * Requires ZohoCalendar.freebusy.READ scope.
-   */
-  async queryFreeBusy(timeMin: Date, timeMax: Date): Promise<BusyMinutes> {
-    const url = new URL(
-      `https://calendar.zoho.${this.dc}/api/v1/calendars/freebusy`,
-    );
-    url.searchParams.set("uemail", this.email);
-    url.searchParams.set("sdate", toZohoDate(timeMin));
-    url.searchParams.set("edate", toZohoDate(timeMax));
-    url.searchParams.set("ftype", "timebased");
-
-    const res = await fetch(url.toString(), {
+  async listCalendars(): Promise<CalendarInfo[]> {
+    const res = await fetch(`${this.apiBase()}/calendars`, {
       headers: { Authorization: `Zoho-oauthtoken ${this.accessToken}` },
     });
 
     if (!res.ok) {
       const err = new Error(
-        `Zoho freebusy failed for ${this.email}: ${res.status} ${await res.text()}`,
+        `Zoho list calendars failed: ${res.status} ${await res.text()}`,
       ) as Error & { status?: number };
       err.status = res.status;
       throw err;
     }
 
-    const raw = (await res.json()) as Record<string, unknown>;
-    return parseZohoFreeBusyResponse(raw);
+    const data = (await res.json()) as {
+      calendars?: ZohoCalendarListItem[];
+    };
+
+    const calendars = data.calendars ?? [];
+    if (calendars.length === 0) {
+      return [
+        {
+          id: this.email,
+          name: "Zoho Calendar",
+          isPrimary: true,
+          isSelected: true,
+          isDeleted: false,
+          isWritable: false,
+          _rawData: { email: this.email },
+        },
+      ];
+    }
+
+    return calendars.map((cal) => ({
+      id: cal.uid ?? this.email,
+      name: cal.name ?? "Zoho Calendar",
+      timeZone: cal.timezone,
+      isPrimary: Boolean(cal.isdefault),
+      isSelected: true,
+      isDeleted: false,
+      isWritable: false,
+      _rawData: cal,
+    }));
+  }
+
+  async queryFreeBusy(timeMin: Date, timeMax: Date): Promise<BusyMinutes> {
+    return this.queryFreeBusyForCalendars([], timeMin, timeMax);
+  }
+
+  async queryFreeBusyForCalendars(
+    calendarUids: string[],
+    timeMin: Date,
+    timeMax: Date,
+  ): Promise<BusyMinutes> {
+    const merged: BusyMinutes = {};
+    const uids = calendarUids.length > 0 ? calendarUids : [this.email];
+
+    for (const uid of uids) {
+      const url = new URL(`${this.apiBase()}/calendars/freebusy`);
+      url.searchParams.set("uid", uid);
+      url.searchParams.set("uemail", this.email);
+      url.searchParams.set("sdate", toZohoDate(timeMin));
+      url.searchParams.set("edate", toZohoDate(timeMax));
+      url.searchParams.set("ftype", "timebased");
+
+      const res = await fetch(url.toString(), {
+        headers: { Authorization: `Zoho-oauthtoken ${this.accessToken}` },
+      });
+
+      if (!res.ok) {
+        const err = new Error(
+          `Zoho freebusy failed for ${uid}: ${res.status} ${await res.text()}`,
+        ) as Error & { status?: number };
+        err.status = res.status;
+        throw err;
+      }
+
+      const raw = (await res.json()) as Record<string, unknown>;
+      const busy = parseZohoFreeBusyResponse(raw);
+      for (const [dateKey, windows] of Object.entries(busy)) {
+        if (!merged[dateKey]) merged[dateKey] = [];
+        merged[dateKey].push(...windows);
+      }
+    }
+
+    return merged;
+  }
+
+  async fetchEventsForCalendars(
+    calendarUids: string[],
+    timeMin: Date,
+    timeMax: Date,
+  ) {
+    const events: Array<{
+      uid: string;
+      calendarId: string;
+      start: Date;
+      end: Date;
+      summary?: string;
+      raw: unknown;
+    }> = [];
+
+    for (const calendarUid of calendarUids) {
+      const url = new URL(
+        `${this.apiBase()}/calendars/${encodeURIComponent(calendarUid)}/events`,
+      );
+      url.searchParams.set(
+        "range",
+        `${toZohoDate(timeMin)},${toZohoDate(timeMax)}`,
+      );
+
+      const res = await fetch(url.toString(), {
+        headers: { Authorization: `Zoho-oauthtoken ${this.accessToken}` },
+      });
+
+      if (!res.ok) continue;
+
+      const data = (await res.json()) as {
+        events?: Array<{
+          uid?: string;
+          title?: string;
+          dateandtime?: { start?: string; end?: string };
+        }>;
+      };
+
+      for (const evt of data.events ?? []) {
+        const startRaw = evt.dateandtime?.start;
+        const endRaw = evt.dateandtime?.end;
+        if (!startRaw || !endRaw) continue;
+        events.push({
+          uid: evt.uid ?? `${calendarUid}-${startRaw}`,
+          calendarId: calendarUid,
+          start: new Date(startRaw),
+          end: new Date(endRaw),
+          summary: evt.title,
+          raw: evt,
+        });
+      }
+    }
+
+    return events;
   }
 }

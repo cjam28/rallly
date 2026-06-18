@@ -1,3 +1,4 @@
+import { CalDAVCalendarService } from "@/features/calendars/services/caldav-calendar";
 import { GoogleCalendarService } from "@/features/calendars/services/google-calendar";
 import { ZohoCalendarService } from "@/features/calendars/services/zoho-calendar";
 
@@ -26,6 +27,12 @@ export const createCalendarService = async (
           service.credentials,
         ),
         email: service.email,
+      });
+    case "caldav":
+      return new CalDAVCalendarService({
+        credentials: CalDAVCalendarService.credentialsSchema.parse(
+          service.credentials,
+        ),
       });
     default:
       throw new Error(`Unsupported provider: ${service.provider}`);

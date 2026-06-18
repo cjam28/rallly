@@ -61,7 +61,7 @@ function isExcluded(exdate: unknown, dt: Date): boolean {
 }
 
 function eventOccurrencesInRange(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // biome-ignore lint/suspicious/noExplicitAny: node-ical event shape is untyped
   evt: any,
   rangeStart: Date,
   rangeEnd: Date,
@@ -85,24 +85,46 @@ function eventOccurrencesInRange(
       ? (evt.recurrences as Record<string, unknown>)
       : {};
 
-  const between = evt.rrule.between(rangeStart, rangeEnd, true) as Date[];
-  for (const dt of between) {
-    if (isExcluded(evt.exdate, dt)) continue;
+  try {
+    const between = evt.rrule.between(rangeStart, rangeEnd, true) as Date[];
+    for (const dt of between) {
+      if (isExcluded(evt.exdate, dt)) continue;
 
-    const override = overrides[dt.toISOString()] as
-      | { start?: unknown; end?: unknown }
-      | undefined;
-    if (override?.start instanceof Date && override?.end instanceof Date) {
-      out.push({ start: override.start, end: override.end });
-      continue;
+      const override = overrides[dt.toISOString()] as
+        | { start?: unknown; end?: unknown }
+        | undefined;
+      if (override?.start instanceof Date && override?.end instanceof Date) {
+        out.push({ start: override.start, end: override.end });
+        continue;
+      }
+
+      if (durationMs > 0) {
+        out.push({ start: dt, end: new Date(dt.getTime() + durationMs) });
+      }
     }
-
-    if (durationMs > 0) {
-      out.push({ start: dt, end: new Date(dt.getTime() + durationMs) });
+  } catch {
+    if (evt.start instanceof Date && evt.end instanceof Date) {
+      out.push({ start: evt.start, end: evt.end });
     }
   }
 
   return out;
+}
+
+export function safeEventOccurrencesInRange(
+  // biome-ignore lint/suspicious/noExplicitAny: node-ical event shape is untyped
+  evt: any,
+  rangeStart: Date,
+  rangeEnd: Date,
+): Array<{ start: Date; end: Date }> {
+  try {
+    return eventOccurrencesInRange(evt, rangeStart, rangeEnd);
+  } catch {
+    if (evt.start instanceof Date && evt.end instanceof Date) {
+      return [{ start: evt.start, end: evt.end }];
+    }
+    return [];
+  }
 }
 
 /**
@@ -122,13 +144,13 @@ export async function fetchBusyFromIcsUrl(
   }
 
   const icsText = await res.text();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // biome-ignore lint/suspicious/noExplicitAny: node-ical parseICS return type is untyped
   const parsed = ical.parseICS(icsText) as Record<string, any>;
   const busy: BusyMinutes = {};
 
   for (const evt of Object.values(parsed)) {
     if (!evt || evt.type !== "VEVENT") continue;
-    for (const occ of eventOccurrencesInRange(evt, rangeStart, rangeEnd)) {
+    for (const occ of safeEventOccurrencesInRange(evt, rangeStart, rangeEnd)) {
       addBusyRangeUTC(busy, new Date(occ.start), new Date(occ.end));
     }
   }

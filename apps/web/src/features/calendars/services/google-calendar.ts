@@ -78,6 +78,49 @@ export class GoogleCalendarService
 
     return busy;
   }
+
+  async fetchEventsForCalendars(
+    calendarIds: string[],
+    timeMin: Date,
+    timeMax: Date,
+  ) {
+    const events: Array<{
+      uid: string;
+      calendarId: string;
+      start: Date;
+      end: Date;
+      summary?: string;
+      raw: unknown;
+    }> = [];
+
+    for (const calendarId of calendarIds) {
+      const resp = await this.client.events.list({
+        calendarId,
+        timeMin: timeMin.toISOString(),
+        timeMax: timeMax.toISOString(),
+        singleEvents: true,
+        orderBy: "startTime",
+      });
+
+      for (const item of resp.data.items ?? []) {
+        if (!item.id) continue;
+        const startStr = item.start?.dateTime ?? item.start?.date;
+        const endStr = item.end?.dateTime ?? item.end?.date;
+        if (!startStr || !endStr) continue;
+
+        events.push({
+          uid: item.id,
+          calendarId,
+          start: new Date(startStr),
+          end: new Date(endStr),
+          summary: item.summary ?? undefined,
+          raw: item,
+        });
+      }
+    }
+
+    return events;
+  }
 }
 
 function toDateKeyUTC(d: Date): string {

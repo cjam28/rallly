@@ -76,6 +76,8 @@ model User {
   calendarConnections  CalendarConnection[]
   credentials          Credential[]
   availabilitySources  AvailabilitySource[]
+  calendarSyncStates   CalendarSyncState[]
+  cachedCalendarEvents CachedCalendarEvent[]
 
   // Default destination calendar for new events
   defaultDestinationCalendarId String?           @map("default_destination_calendar_id")

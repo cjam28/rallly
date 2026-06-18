@@ -4,6 +4,7 @@ import * as ical from "node-ical";
 import type { DAVCalendar } from "tsdav";
 import { createDAVClient } from "tsdav";
 import type { BusyMinutes } from "../lib/busy";
+import { safeEventOccurrencesInRange } from "./ics-url";
 
 export interface CalDAVConfig {
   serverUrl: string;
@@ -109,8 +110,12 @@ export async function fetchBusyFromCalDAV(
     const parsed = ical.parseICS(obj.data) as Record<string, any>;
     for (const evt of Object.values(parsed)) {
       if (!evt || evt.type !== "VEVENT") continue;
-      if (evt.start instanceof Date && evt.end instanceof Date) {
-        addBusyRangeUTC(busy, evt.start, evt.end);
+      for (const occ of safeEventOccurrencesInRange(
+        evt,
+        rangeStart,
+        rangeEnd,
+      )) {
+        addBusyRangeUTC(busy, occ.start, occ.end);
       }
     }
   }
