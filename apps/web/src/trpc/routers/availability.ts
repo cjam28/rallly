@@ -2,8 +2,10 @@ import "server-only";
 
 import type { Prisma } from "@rallly/database";
 import { prisma } from "@rallly/database";
+import { decrypt, encrypt } from "@rallly/utils/encryption";
 import { TRPCError } from "@trpc/server";
 import * as z from "zod";
+import { env } from "@/env";
 import type { BusyMinutes } from "@/features/availability/lib/busy";
 import { mergeBusy } from "@/features/availability/lib/busy";
 import { generateFreeSlots } from "@/features/availability/lib/slot-generator";
@@ -21,6 +23,26 @@ import {
 import { getBusyFromCacheForSources } from "@/features/calendars/sync/busyFromCache";
 import { truncateErrorMessage } from "@/features/calendars/sync/utils";
 import { privateProcedure, router } from "../trpc";
+
+/**
+ * Encrypt an ICS URL before persisting.  Returns the ciphertext string.
+ */
+function encryptIcsUrl(url: string): string {
+  return encrypt(url, env.SECRET_PASSWORD);
+}
+
+/**
+ * Decrypt a stored ICS URL.  Falls back to treating the value as plaintext
+ * for rows written before encryption was introduced.
+ */
+function decryptIcsUrl(stored: string): string {
+  try {
+    return decrypt(stored, env.SECRET_PASSWORD);
+  } catch {
+    // Pre-migration row stored as plaintext — return as-is
+    return stored;
+  }
+}
 
 const jsonRecordSchema = z.record(z.string(), z.unknown());
 
@@ -59,21 +81,40 @@ const previewParamsSchema = z.object({
 
 const sources = router({
   list: privateProcedure.query(async ({ ctx }) => {
-    return prisma.availabilitySource.findMany({
+    const rows = await prisma.availabilitySource.findMany({
       where: { userId: ctx.user.id },
       orderBy: { createdAt: "asc" },
+    });
+    // Decrypt ICS URLs so the UI receives the plaintext URL
+    return rows.map((row) => {
+      if (row.type === "ics_url") {
+        const cfg = row.config as { url?: string } | null;
+        if (cfg?.url) {
+          return {
+            ...row,
+            config: { ...cfg, url: decryptIcsUrl(cfg.url) },
+          };
+        }
+      }
+      return row;
     });
   }),
 
   create: privateProcedure
     .input(availabilitySourceSchema)
     .mutation(async ({ ctx, input }) => {
+      // Encrypt ICS URL before persisting
+      let config = input.config;
+      if (input.type === "ics_url" && typeof config.url === "string") {
+        config = { ...config, url: encryptIcsUrl(config.url) };
+      }
+
       const source = await prisma.availabilitySource.create({
         data: {
           userId: ctx.user.id,
           type: input.type,
           label: input.label,
-          config: input.config as unknown as Prisma.InputJsonValue,
+          config: config as unknown as Prisma.InputJsonValue,
         },
       });
 
@@ -101,12 +142,21 @@ const sources = router({
       if (!source || source.userId !== ctx.user.id) {
         throw new TRPCError({ code: "NOT_FOUND" });
       }
+      // Encrypt ICS URL if being updated
+      let newConfig = input.config;
+      if (
+        source.type === "ics_url" &&
+        newConfig !== undefined &&
+        typeof newConfig.url === "string"
+      ) {
+        newConfig = { ...newConfig, url: encryptIcsUrl(newConfig.url) };
+      }
       return prisma.availabilitySource.update({
         where: { id: input.id },
         data: {
           ...(input.label !== undefined && { label: input.label }),
-          ...(input.config !== undefined && {
-            config: input.config as unknown as Prisma.InputJsonValue,
+          ...(newConfig !== undefined && {
+            config: newConfig as unknown as Prisma.InputJsonValue,
           }),
         },
       });
@@ -148,7 +198,7 @@ const sources = router({
           });
         }
         const config = source.config as { url?: string };
-        url = config.url;
+        url = config.url ? decryptIcsUrl(config.url) : undefined;
       }
 
       if (!url) {
@@ -320,7 +370,6 @@ export const availability = router({
           .filter((s) => s.type === "ics_url")
           .map((s) => s.id);
         const cacheResults = await getBusyFromCacheForSources({
-          userId: ctx.user.id,
           sourceIds: icsIds,
           rangeStart,
           rangeEnd,
@@ -340,9 +389,10 @@ export const availability = router({
                   "@/features/availability/providers/ics-url"
                 );
                 const cfg = source.config as { url?: string };
-                if (cfg.url) {
+                const icsUrl = cfg.url ? decryptIcsUrl(cfg.url) : undefined;
+                if (icsUrl) {
                   busy = normalizeProviderBusy(
-                    await fetchBusyFromIcsUrl(cfg.url, rangeStart, rangeEnd),
+                    await fetchBusyFromIcsUrl(icsUrl, rangeStart, rangeEnd),
                     timeZone,
                   );
                   await syncIcsSubscription(ctx.user.id, source.id).catch(
@@ -425,7 +475,6 @@ export const availability = router({
       if (connections.length > 0) {
         const connectionIds = connections.map((c) => c.id);
         const cacheResults = await getBusyFromCacheForSources({
-          userId: ctx.user.id,
           sourceIds: connectionIds,
           rangeStart,
           rangeEnd,

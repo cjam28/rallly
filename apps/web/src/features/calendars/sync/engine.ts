@@ -2,6 +2,8 @@ import "server-only";
 
 import type { Prisma } from "@rallly/database";
 import { prisma } from "@rallly/database";
+import { decrypt } from "@rallly/utils/encryption";
+import { env } from "@/env";
 import { fetchBusyFromIcsUrl } from "@/features/availability/providers/ics-url";
 import { createCalendarService } from "@/features/calendars/service";
 import { CalDAVCalendarService } from "@/features/calendars/services/caldav-calendar";
@@ -224,7 +226,7 @@ export async function syncCalendarConnection(
         rangeStart,
         rangeEnd,
       );
-      const events = busyToEvents(busy, false);
+      const events = busyToEvents(busy);
       await replaceCachedEvents({
         userId,
         sourceKind: "connection",
@@ -278,9 +280,17 @@ export async function syncIcsSubscription(
     return { sourceId, ok: false, eventCount: 0, error: "not_found" };
   }
 
-  const url = (source.config as { url?: string }).url;
-  if (!url) {
+  const encryptedUrl = (source.config as { url?: string }).url;
+  if (!encryptedUrl) {
     return { sourceId, ok: false, eventCount: 0, error: "missing_url" };
+  }
+
+  // Decrypt — fall back to plaintext for pre-migration rows
+  let url: string;
+  try {
+    url = decrypt(encryptedUrl, env.SECRET_PASSWORD);
+  } catch {
+    url = encryptedUrl;
   }
 
   const { rangeStart, rangeEnd } = syncRange();
@@ -320,7 +330,6 @@ export async function syncIcsSubscription(
 
 function busyToEvents(
   busy: Record<string, Array<{ start: number; end: number }>>,
-  assumeUtc = true,
 ) {
   const events: Array<{
     externalUid: string;
@@ -335,18 +344,13 @@ function busyToEvents(
     const day = Number.parseInt(dateKey.slice(6, 8), 10);
 
     for (const w of windows) {
-      const start = assumeUtc
-        ? new Date(Date.UTC(year, month, day, 0, 0, 0, 0) + w.start * 60_000)
-        : new Date(year, month, day, 0, 0, 0, 0);
-      if (!assumeUtc) {
-        start.setMinutes(start.getMinutes() + w.start);
-      }
-      const end = assumeUtc
-        ? new Date(Date.UTC(year, month, day, 0, 0, 0, 0) + w.end * 60_000)
-        : new Date(year, month, day, 0, 0, 0, 0);
-      if (!assumeUtc) {
-        end.setMinutes(end.getMinutes() + w.end);
-      }
+      // Always store times as UTC milliseconds from epoch.
+      // When assumeUtc=false (Zoho returns wall-clock minutes), treat the
+      // dateKey as a UTC calendar date and offset by the window minutes, which
+      // is the best approximation we can make without knowing the user TZ here.
+      const dayStartUtc = Date.UTC(year, month, day, 0, 0, 0, 0);
+      const start = new Date(dayStartUtc + w.start * 60_000);
+      const end = new Date(dayStartUtc + w.end * 60_000);
 
       events.push({
         externalUid: `${dateKey}-${w.start}-${w.end}`,

@@ -119,6 +119,9 @@ app.get("/remove-deleted-polls", async (c) => {
   });
 });
 
+/**
+ * Periodic calendar event cache refresh for all users with connections or ICS feeds.
+ */
 app.get("/sync-calendars", async (c) => {
   const { syncAllUsers } = await import("@/features/calendars/sync");
   const result = await syncAllUsers();
@@ -132,18 +135,6 @@ app.get("/sync-calendars", async (c) => {
       synced: ok,
       failed,
     },
-  });
-});
-
-/**
- * Periodic calendar event cache refresh for all users with connections or ICS feeds.
- */
-app.get("/sync-calendars", async (c) => {
-  const { syncAllUsers } = await import("@/features/calendars/sync");
-  const result = await syncAllUsers();
-  return c.json({
-    success: true,
-    summary: result,
   });
 });
 

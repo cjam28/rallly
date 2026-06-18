@@ -16,19 +16,19 @@ export interface CachedBusyResult {
 }
 
 export async function getBusyFromCacheForSources(params: {
-  userId: string;
   sourceIds: string[];
   rangeStart: Date;
   rangeEnd: Date;
   timeZone: string;
 }): Promise<Map<string, CachedBusyResult>> {
-  const { userId, sourceIds, rangeStart, rangeEnd, timeZone } = params;
+  const { sourceIds, rangeStart, rangeEnd, timeZone } = params;
   const results = new Map<string, CachedBusyResult>();
 
   if (sourceIds.length === 0) return results;
 
+  // No userId filter: sources may belong to different users (e.g. poll participants)
   const syncStates = await prisma.calendarSyncState.findMany({
-    where: { sourceId: { in: sourceIds }, userId },
+    where: { sourceId: { in: sourceIds } },
   });
   const syncBySource = new Map(syncStates.map((s) => [s.sourceId, s]));
 
