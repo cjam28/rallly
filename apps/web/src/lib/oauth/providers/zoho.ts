@@ -26,7 +26,9 @@ interface ZohoTokenResponse {
 
 interface ZohoUserInfoResponse {
   AAID?: string;
+  ZUID?: string | number;
   Email?: string;
+  email?: string;
   Display_Name?: string;
   error?: string;
 }
@@ -131,13 +133,21 @@ export class ZohoOAuthClient implements OAuthClient {
 
       const data = (await res.json()) as ZohoUserInfoResponse;
 
-      if (!data.AAID || !data.Email) {
-        throw new Error("Missing required user information from Zoho");
+      const providerAccountId =
+        data.AAID ?? (data.ZUID != null ? String(data.ZUID) : undefined);
+      const email = data.Email ?? data.email;
+
+      if (!providerAccountId || !email) {
+        // #region agent log
+        throw new Error(
+          `Missing required user information from Zoho (keys: ${Object.keys(data).join(",")})`,
+        );
+        // #endregion
       }
 
       return {
-        id: data.AAID,
-        email: data.Email,
+        id: providerAccountId,
+        email,
         name: data.Display_Name,
       };
     } catch (error) {
