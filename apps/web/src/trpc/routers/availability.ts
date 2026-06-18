@@ -2,6 +2,7 @@ import "server-only";
 
 import type { Prisma } from "@rallly/database";
 import { prisma } from "@rallly/database";
+import { createLogger } from "@rallly/logger";
 import { TRPCError } from "@trpc/server";
 import * as z from "zod";
 import type { BusyMinutes } from "@/features/availability/lib/busy";
@@ -14,6 +15,8 @@ import {
 } from "@/features/availability/mutations/snapshots";
 import type { AvailabilityPreviewResult } from "@/features/availability/types";
 import { privateProcedure, router } from "../trpc";
+
+const availabilityLogger = createLogger("availability");
 
 const jsonRecordSchema = z.record(z.string(), z.unknown());
 
@@ -277,12 +280,40 @@ export const availability = router({
               busy = busyFromManualBlocks(cfg.blocks ?? []);
             }
             allBusy.push(busy);
+            const windowCount = countBusyWindows(busy as BusyMinutes);
             busyBreakdown.push({
               sourceId: source.id,
               label: source.label,
-              busyWindowCount: countBusyWindows(busy as BusyMinutes),
+              busyWindowCount: windowCount,
             });
-          } catch {
+            // #region agent log
+            availabilityLogger.info(
+              {
+                hypothesisId: "H2-ics-sync",
+                sourceId: source.id,
+                sourceType: source.type,
+                label: source.label,
+                busyWindowCount: windowCount,
+              },
+              "Availability source fetched",
+            );
+            // #endregion
+          } catch (error) {
+            // #region agent log
+            availabilityLogger.warn(
+              {
+                hypothesisId: "H2-ics-sync",
+                sourceId: source.id,
+                sourceType: source.type,
+                label: source.label,
+                error:
+                  error instanceof Error
+                    ? error.message
+                    : "unknown fetch error",
+              },
+              "Availability source fetch failed",
+            );
+            // #endregion
             busyBreakdown.push({
               sourceId: source.id,
               label: source.label,

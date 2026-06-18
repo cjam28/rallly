@@ -2,6 +2,7 @@ import "server-only";
 
 import { zValidator } from "@hono/zod-validator";
 import { createLogger } from "@rallly/logger";
+import { absoluteUrl } from "@rallly/utils/absolute-url";
 import { generateCodeVerifier, generateState } from "arctic";
 import { Hono } from "hono";
 import { getCookie, setCookie } from "hono/cookie";
@@ -11,6 +12,14 @@ import { validateRedirectUrl } from "@/utils/redirect";
 import type { CreateOAuthOptions } from "./types";
 
 const logger = createLogger("oauth");
+
+function integrationCallbackUrl(baseUrl: string, integrationId: string) {
+  return absoluteUrl(`${baseUrl}/callback/${integrationId}`);
+}
+
+function integrationRedirectUrl(path: string) {
+  return absoluteUrl(validateRedirectUrl(path) || "/");
+}
 
 export function OAuthIntegration<T extends string>(
   options: CreateOAuthOptions<T>,
@@ -46,11 +55,11 @@ export function OAuthIntegration<T extends string>(
     try {
       const { id } = c.req.valid("param");
 
-      const callbackUrl = new URL(`${baseUrl}/callback/${id}`, c.req.url);
+      const callbackUrl = integrationCallbackUrl(baseUrl, id);
 
       const integration = getIntegration({
         integrationId: id as T,
-        callbackUrl: callbackUrl.toString(),
+        callbackUrl,
       });
 
       if (!integration) {
@@ -65,6 +74,19 @@ export function OAuthIntegration<T extends string>(
         state,
         codeVerifier,
       );
+
+      // #region agent log
+      logger.info(
+        {
+          hypothesisId: "H1-proxy-callback-url",
+          integrationId: id,
+          callbackUrl,
+          reqUrl: c.req.url,
+          authorizationHost: authorizationUrl.host,
+        },
+        "OAuth calendar connect initiated",
+      );
+      // #endregion
 
       // Set secure cookies
       setCookie(c, STATE, state, {
@@ -104,11 +126,11 @@ export function OAuthIntegration<T extends string>(
     try {
       const { id } = c.req.valid("param");
 
-      const callbackUrl = new URL(`${baseUrl}/callback/${id}`, c.req.url);
+      const callbackUrl = integrationCallbackUrl(baseUrl, id);
 
       const integration = getIntegration({
         integrationId: id as T,
-        callbackUrl: callbackUrl.toString(),
+        callbackUrl,
       });
 
       if (!integration) {
@@ -131,7 +153,7 @@ export function OAuthIntegration<T extends string>(
         state !== storedState ||
         !codeVerifier
       ) {
-        const errorUrl = new URL(redirectTo, c.req.url);
+        const errorUrl = new URL(integrationRedirectUrl(redirectTo));
         errorUrl.searchParams.set("error", "invalid_request");
         return c.redirect(errorUrl.toString());
       }
@@ -149,7 +171,7 @@ export function OAuthIntegration<T extends string>(
       });
 
       // Redirect with success
-      const successUrl = new URL(redirectTo, c.req.url);
+      const successUrl = new URL(integrationRedirectUrl(redirectTo));
       successUrl.searchParams.set("connected", "true");
       successUrl.searchParams.set("integration", id);
 
@@ -158,7 +180,7 @@ export function OAuthIntegration<T extends string>(
       logger.error({ error }, "OAuth connection failed");
 
       const redirectTo = getCookie(c, REDIRECT_TO) || "/";
-      const errorUrl = new URL(redirectTo, c.req.url);
+      const errorUrl = new URL(integrationRedirectUrl(redirectTo));
       errorUrl.searchParams.set("error", "connection_failed");
       return c.redirect(errorUrl.toString());
     }
