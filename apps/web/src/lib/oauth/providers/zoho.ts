@@ -99,7 +99,7 @@ export class ZohoOAuthClient implements OAuthClient {
 
       if (!res.ok || data.error) {
         throw new Error(
-          `Zoho token exchange failed: ${data.error ?? res.status}`,
+          `Zoho token exchange failed: ${data.error ?? res.status} body=${JSON.stringify(data)}`,
         );
       }
 

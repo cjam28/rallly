@@ -42,6 +42,7 @@ export interface OAuthService {
   provider: string;
   scopes: string[];
   onConnect?: (params: {
+    userId: string;
     providerAccountId: string;
     userInfo: UserInfo;
     provider: string;

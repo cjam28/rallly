@@ -8,6 +8,7 @@ import { Hono } from "hono";
 import { getCookie, setCookie } from "hono/cookie";
 import { handle } from "hono/vercel";
 import * as z from "zod";
+import authLib from "@/lib/auth";
 import { validateRedirectUrl } from "@/utils/redirect";
 import type { CreateOAuthOptions } from "./types";
 
@@ -163,7 +164,16 @@ export function OAuthIntegration<T extends string>(
 
       const userInfo = await integration.getUserInfo(tokens);
 
+      const session = await authLib.api.getSession({
+        headers: c.req.raw.headers,
+      });
+
+      if (!session?.user) {
+        throw new Error("User not found - no session on OAuth callback");
+      }
+
       await integration.onConnect?.({
+        userId: session.user.id,
         providerAccountId: userInfo.id,
         userInfo,
         provider: integration.provider,
@@ -177,7 +187,19 @@ export function OAuthIntegration<T extends string>(
 
       return c.redirect(successUrl.toString());
     } catch (error) {
-      logger.error({ error }, "OAuth connection failed");
+      // #region agent log
+      logger.error(
+        {
+          hypothesisId: "H3-oauth-callback",
+          integrationId: c.req.param("id"),
+          err:
+            error instanceof Error
+              ? { message: error.message, name: error.name }
+              : String(error),
+        },
+        "OAuth connection failed",
+      );
+      // #endregion
 
       const redirectTo = getCookie(c, REDIRECT_TO) || "/";
       const errorUrl = new URL(integrationRedirectUrl(redirectTo));

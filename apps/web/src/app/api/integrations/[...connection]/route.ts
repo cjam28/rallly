@@ -4,7 +4,6 @@ import {
   syncCalendars,
 } from "@/features/calendars/mutations";
 import { saveOAuthCredentials } from "@/features/credentials/mutations";
-import { getSession } from "@/lib/auth";
 import { GoogleOAuthClient } from "@/lib/oauth/providers/google";
 import { ZohoOAuthClient } from "@/lib/oauth/providers/zoho";
 import { OAuthIntegration } from "@/lib/oauth/server";
@@ -30,18 +29,12 @@ const { handler } = OAuthIntegration<Integration>({
             "https://www.googleapis.com/auth/userinfo.profile",
           ],
           onConnect: async ({
+            userId,
             provider,
             tokens,
             providerAccountId,
             userInfo,
           }) => {
-            const session = await getSession();
-            if (!session?.user) {
-              throw new Error("User not found");
-            }
-
-            const userId = session.user.id;
-
             // save credentials to database
             const credential = await saveOAuthCredentials({
               userId,
@@ -75,18 +68,12 @@ const { handler } = OAuthIntegration<Integration>({
           dc: env.ZOHO_DC ?? "com",
           callbackUrl,
           onConnect: async ({
+            userId,
             provider,
             tokens,
             providerAccountId,
             userInfo,
           }) => {
-            const session = await getSession();
-            if (!session?.user) {
-              throw new Error("User not found");
-            }
-
-            const userId = session.user.id;
-
             const credential = await saveOAuthCredentials({
               userId,
               provider,

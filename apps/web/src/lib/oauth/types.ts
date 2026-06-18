@@ -29,6 +29,7 @@ export interface OAuthConnection {
 export interface OAuthClient {
   provider: string;
   onConnect?: (params: {
+    userId: string;
     providerAccountId: string;
     userInfo: UserInfo;
     provider: string;
