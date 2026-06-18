@@ -671,7 +671,6 @@
   "availabilitySourceLabel": "Label",
   "availabilityManualBlock": "Manual block",
   "caldavServerUrl": "Server URL",
-  "caldavServerUrlHint": "For Zoho: use https://calendar.zoho.com/.well-known/caldav (or your DC host) with your Zoho email and an app-specific password if 2FA is on.",
   "caldavCalendarPath": "Calendar path (optional)",
   "availabilityBlockStart": "Block start",
   "availabilityBlockEnd": "Block end",

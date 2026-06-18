@@ -86,14 +86,8 @@ export function ConnectCalDAVDialog({
               id="caldav-connect-server"
               value={serverUrl}
               onChange={(e) => setServerUrl(e.target.value)}
-              placeholder="https://calendar.zoho.com/.well-known/caldav"
+              placeholder="https://calendar.example.com"
             />
-            <p className="text-muted-foreground text-xs">
-              <Trans
-                i18nKey="caldavServerUrlHint"
-                defaults="For Zoho: use https://calendar.zoho.com/.well-known/caldav (or your DC host) with your Zoho email and an app-specific password if 2FA is on."
-              />
-            </p>
           </div>
           <div className="space-y-2">
             <Label htmlFor="caldav-connect-user">
