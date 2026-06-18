@@ -89,6 +89,7 @@
     "next": "16.2.6",
     "next-safe-action": "^8.0.7",
     "node-ical": "^0.26.1",
+    "temporal-polyfill": "^0.3.2",
     "pg": "^8.17.1",
     "php-serialize": "^4.1.1",
     "postcss": "^8.5.6",

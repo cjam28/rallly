@@ -71,6 +71,13 @@ COPY --chown=nextjs:nodejs --from=installer /app/apps/web/.next/standalone ./
 COPY --chown=nextjs:nodejs --from=installer /app/apps/web/.next/static ./apps/web/.next/static
 COPY --chown=nextjs:nodejs --from=installer /app/apps/web/public ./apps/web/public
 
+# serverExternalPackages are loaded from node_modules at runtime; pnpm nested layout
+# is not fully traced into standalone. Pin versions to pnpm-lock.yaml when upgrading.
+COPY --from=installer /app/node_modules/.pnpm/node-ical@0.26.1 ./node_modules/.pnpm/node-ical@0.26.1
+COPY --from=installer /app/node_modules/.pnpm/rrule-temporal@1.5.3 ./node_modules/.pnpm/rrule-temporal@1.5.3
+COPY --from=installer /app/node_modules/.pnpm/temporal-polyfill@0.3.2 ./node_modules/.pnpm/temporal-polyfill@0.3.2
+COPY --from=installer /app/node_modules/.pnpm/tsdav@2.2.2 ./node_modules/.pnpm/tsdav@2.2.2
+
 USER nextjs
 
 ENV HOME=/app

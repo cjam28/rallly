@@ -12,7 +12,26 @@ const withBundleAnalyzer = createBundleAnalyzer({
 });
 
 const nextConfig: NextConfig = {
-  serverExternalPackages: ["node-ical", "rrule", "tsdav"],
+  // Keep calendar parsers out of the bundled server graph (avoids rrule BigInt minification bugs).
+  // Standalone trace must also include pnpm-nested deps — see Dockerfile COPY steps.
+  serverExternalPackages: [
+    "node-ical",
+    "rrule-temporal",
+    "temporal-polyfill",
+    "tsdav",
+  ],
+  outputFileTracingIncludes: {
+    "/**/*": [
+      "./node_modules/node-ical/**",
+      "./node_modules/rrule-temporal/**",
+      "./node_modules/temporal-polyfill/**",
+      "./node_modules/tsdav/**",
+      "./node_modules/.pnpm/node-ical@*/**",
+      "./node_modules/.pnpm/rrule-temporal@*/**",
+      "./node_modules/.pnpm/temporal-polyfill@*/**",
+      "./node_modules/.pnpm/tsdav@*/**",
+    ],
+  },
   allowedDevOrigins: ["web.rallly.localhost"],
   experimental: {
     staleTimes: {
