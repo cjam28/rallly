@@ -71,7 +71,7 @@ export function SubscriptionFeedsSettings() {
     if (!test.ok) {
       toast.error(
         t("availabilitySourceTestFailed", {
-          defaultValue: "ICS feed test failed: {{error}}",
+          defaultValue: "ICS feed test failed: {error}",
           error: test.error,
         }),
       );
@@ -190,7 +190,7 @@ export function SubscriptionFeedsSettings() {
                               message: result.ok
                                 ? t("availabilitySourceTestSuccessInline", {
                                     defaultValue:
-                                      "{{count}} busy windows found (next 14 days)",
+                                      "{count} busy windows found (next 14 days)",
                                     count: result.busyWindowCount,
                                   })
                                 : result.error,

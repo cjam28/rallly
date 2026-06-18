@@ -373,7 +373,7 @@
   "personal": "Personal",
   "deleteSpaceDialogTitle": "Delete Space",
   "deleteSpaceDialogDescription": "This will permanently delete the space and all polls inside it. This action cannot be undone.",
-  "deleteSpaceInstruction": "Please type the space name to confirm:",
+  "deleteSpaceInstruction": "Please type the space name to confirm: {spaceName}",
   "deleteSpacePermanently": "Delete Space Permanently",
   "deleteSpace": "Delete Space",
   "deletedSpaceSuccess": "Space has been permanently deleted",
@@ -709,5 +709,12 @@
   "calendarLegendExternal": "External calendars",
   "calendarLegendPolls": "Open poll options",
   "calendarLegendEvents": "Scheduled events",
-  "ssoLaunchSigningIn": "Signing you in…"
+  "ssoLaunchSigningIn": "Signing you in…",
+  "lastSyncedAt": "Last synced: {time}",
+  "neverSynced": "Never",
+  "calendarConnectedSuccess": "{provider} connected successfully",
+  "availabilitySourceTestFailed": "ICS feed test failed: {error}",
+  "availabilitySourceTestSuccessInline": "{count} busy windows found (next 14 days)",
+  "availabilitySourceTestSuccess": "Feed OK — {count} busy windows in next 14 days",
+  "availabilitySourceTestFailedGeneric": "ICS feed test failed"
 }

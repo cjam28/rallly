@@ -96,7 +96,7 @@ export function AvailabilitySourcesSettings() {
       if (!test.ok) {
         toast.error(
           t("availabilitySourceTestFailed", {
-            defaultValue: "ICS feed test failed: {{error}}",
+            defaultValue: "ICS feed test failed: {error}",
             error: test.error,
           }),
         );
@@ -238,7 +238,7 @@ export function AvailabilitySourcesSettings() {
                                 message: result.ok
                                   ? t("availabilitySourceTestSuccessInline", {
                                       defaultValue:
-                                        "{{count}} busy windows found (next 14 days)",
+                                        "{count} busy windows found (next 14 days)",
                                       count: result.busyWindowCount,
                                     })
                                   : result.error,
@@ -248,15 +248,14 @@ export function AvailabilitySourcesSettings() {
                               toast.success(
                                 t("availabilitySourceTestSuccess", {
                                   defaultValue:
-                                    "Feed OK — {{count}} busy windows in next 14 days",
+                                    "Feed OK — {count} busy windows in next 14 days",
                                   count: result.busyWindowCount,
                                 }),
                               );
                             } else {
                               toast.error(
                                 t("availabilitySourceTestFailed", {
-                                  defaultValue:
-                                    "ICS feed test failed: {{error}}",
+                                  defaultValue: "ICS feed test failed: {error}",
                                   error: result.error,
                                 }),
                               );

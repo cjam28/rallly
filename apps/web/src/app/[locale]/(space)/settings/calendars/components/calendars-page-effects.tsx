@@ -39,7 +39,7 @@ export function CalendarsPageEffects() {
         (integration && integrationLabels[integration]) || "Calendar";
       toast.success(
         t("calendarConnectedSuccess", {
-          defaultValue: "{{provider}} connected successfully",
+          defaultValue: "{provider} connected successfully",
           provider: label,
         }),
       );

@@ -78,7 +78,7 @@ function DeleteSpaceDialog({
               <p className="text-sm">
                 <Trans
                   i18nKey="deleteSpaceInstruction"
-                  defaults="Please type the space name to confirm: {{spaceName}}"
+                  defaults="Please type the space name to confirm: {spaceName}"
                   values={{ spaceName }}
                 />
               </p>

@@ -178,7 +178,7 @@ export function CalendarConnectionList() {
                 <p className="mt-1 text-muted-foreground text-xs">
                   <Trans
                     i18nKey="lastSyncedAt"
-                    defaults="Last synced: {{time}}"
+                    defaults="Last synced: {time}"
                     values={{
                       time: formatLastSynced(
                         lastSynced,
