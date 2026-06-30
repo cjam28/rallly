@@ -1,0 +1,69 @@
+---
+description: Where nova project knowledge lives — read when planning, debugging, or reviewing past decisions.
+alwaysApply: true
+---
+
+# Knowledge pointers for nova
+
+When you need context beyond the current files, look here in this order:
+
+## 1. Recent raw history (project-local)
+
+`./.specstory/history/*.md` — every Cursor Composer conversation in this project, verbatim, append-only. The newest 5–10 are usually the most relevant.
+
+When starting a task related to a known past session, search this directory for keywords:
+```bash
+rg -l <keyword> .specstory/history/
+```
+
+## 2. Curated lessons (env-wide)
+
+`_shared/lessons-learned/*.md` (symlinked from `~/Dev/nova/_shared/lessons-learned/`) — distilled insights with frontmatter (date, tags, source).
+
+## 3. Curated lessons (cross-env)
+
+`~/Dev/_shared/lessons-learned/*.md` — global insights that apply across every env.
+
+## 4. Code patterns and playbooks
+
+- `_shared/code-patterns/` — reusable snippets for nova
+- `_shared/playbooks/` — env-specific workflows
+- `_shared/conventions/` — env-specific conventions
+
+## 5. Cross-env conventions and playbooks
+
+- `~/Dev/_shared/conventions/` — naming, git, etc.
+- `~/Dev/_shared/playbooks/` — env/project lifecycle, lesson promotion
+
+## When you find a reusable insight
+
+Propose: `~/Dev/_shared/_scripts/promote-lesson.sh nova <project>` and let the user decide. Do not run it unilaterally.
+
+## 6. MCP servers and shell env vars
+
+When adding or editing MCP servers, read **`~/Dev/_shared/playbooks/mcp-env-vars-and-secrets.md`**.
+
+- Env-wide: `~/Dev/nova/_shared/_templates/.cursor/mcp.json`
+- Project-only: real `<project>/.cursor/mcp.json` (not symlinked)
+
+**Secret lookup (before asking the user to search):** `~/Dev/_shared/_scripts/resolve-secret.sh <VAR>` → mac-shared (`~/.cursor/mcp.secrets.env`) or ai01-stack (`~/Dev/ai01/ai01-main/keys.env`) or project/remote per `secrets-and-env-inventory.md`.
+
+Never commit literal secrets. Use `${env:VAR}` in committed mcp.json. Shared secrets: `~/.cursor/mcp.secrets.env` + `install-mcp-secrets-shell.sh`. Cmd-Q and restart Cursor.
+
+## 7. Agent skill discovery (user-global)
+
+Global skills: `~/.agents/skills/` (`skill-orchestrator`, `skill-lookup`).
+
+For specialized tasks, orchestrate via **skill-orchestrator** → **prompts-chat** MCP (`search_skills`, `get_skill`). Env template includes `prompts-chat`. Registry: https://mcpmarket.com/tools/skills/skill-lookup-registry
+
+## 8. External product/library documentation
+
+When accurate docs would materially help (API reference, framework setup, product behavior):
+
+1. **Self-hosted docs-mcp (quick check)** — This project's `.cursor/mcp.json` (usually symlinked) may include MCPHub **`$smart`** entries. Hubs on `mcp.christoalto.com` and `mcp.testnovalabs.com` may expose a **docs-mcp** upstream with purpose-indexed doc corpora. Inspect enabled MCP tools/resources; if docs search or fetch tools exist, try them briefly. **Not guaranteed** — if missing, disabled, empty, or unhelpful, move on immediately.
+2. **Context7** — Context7 MCP/plugin when no indexed local docs match.
+3. **Web** — Web search, `WebFetch`, or browser MCP last.
+
+**GitHub repos:** global **`gitmcp`** (`~/.cursor/mcp.json`) for README / llms.txt — repo source docs, not indexed product docs.
+
+Do not stall hunting for docs. One quick MCP check, then fall through the ladder.

@@ -1,0 +1,19 @@
+---
+description: Git worktree & branch hygiene — one workstream = one branch = one worktree. Always applied.
+alwaysApply: true
+---
+
+# Worktree & branch hygiene
+
+Concurrent agents that branch-switch inside one checkout strand commits and drift `main`
+(see the homeos incident in `~/Dev/_shared/lessons-learned/agent-worktree-hygiene.md`).
+Make isolation the default:
+
+- **One workstream = one branch = one worktree** under `.worktrees/` (gitignored). Use the
+  `superpowers:using-git-worktrees` skill (or `git worktree add .worktrees/<name> -b <branch>`).
+- Keep the **primary checkout on `main` and clean**. Don't switch branches there or accumulate
+  unrelated uncommitted work.
+- **Push feature branches early** — nothing should live only on local disk. Keep `main` in sync
+  with what's deployed.
+- An advisory `branch-guard` pre-commit hook warns when committing on `main`/`master` or a
+  detached HEAD (`DEV_GUARD_STRICT=1` to enforce; `--no-verify` to override).

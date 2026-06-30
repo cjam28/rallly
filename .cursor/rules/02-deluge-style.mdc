@@ -1,0 +1,68 @@
+---
+description: Deluge style — auto-applied when working with .dg files.
+globs: **/*.dg
+---
+
+# Deluge style
+
+## Syntax reminders (Deluge ≠ JavaScript, ≠ Python)
+
+- Statements end with `;`
+- String concatenation: `+`, but coerce non-strings explicitly with `toString`
+- Lists: `list = List();` then `list.add(x);` — NOT `[]` literal in legacy code (newer Deluge supports literals; check Zoho's current spec)
+- Maps: `m = Map();` then `m.put("k", v);` — access via `m.get("k")` or `m.containKey("k")`
+- `if/else if/else` — note `else if`, two words
+- `for each x in list` for iteration; `for i in 1..10` for ranges
+- No early `return` from inside loops in some Deluge versions — verify before relying on it
+
+## Common gotchas (extend as encountered — promote to lessons-learned)
+
+- `info` is the print/log statement; output goes to the function's execution log, not stdout
+- `null` checks: use `isNull(x)` not `x == null` (the latter has surprising behavior on empty strings/lists)
+- Date math: use `addDay`, `addMonth`, etc. methods on date objects; date arithmetic with `+` is unreliable
+- HTTP responses: `response.get("responseText")` for body, `response.get("responseCode")` for status. Status is a string in some contexts.
+- Map iteration: `for each k in m.keys()` — keys come back as strings even if you put ints
+
+## Function structure
+
+```deluge
+// Function: <name>
+// Purpose: <one line>
+// Trigger: <manual | webhook | workflow | scheduled>
+// Inputs:
+//   - param_name (Type): description
+// Returns: <type or "no return — side effect only">
+// Side effects: <e.g. "sends Cliq message to #channel", "updates CRM Contact">
+// Dry-run support: <yes/no>
+
+function_name(param1, param2)
+{
+  // 1. Validate inputs
+  if (isNull(param1))
+  {
+    info "ERROR: param1 is null";
+    return;
+  }
+
+  // 2. Idempotency check (if writing)
+  // 3. Side effects
+  // 4. Audit log
+
+  info "function_name OK";
+}
+```
+
+## Audit logging
+
+Every function that writes to Zoho or calls external APIs should `info` its outcome AND post to `#deluge-audit` Cliq channel for traceability:
+
+```deluge
+zoho.cliq.postToChannel("deluge-audit",
+  {"text": "function_name: action=" + action_taken + " target=" + target_id});
+```
+
+## Never
+
+- Hardcode OAuth tokens or webhook secrets
+- Skip the dry-run path in a function that affects multiple records
+- Use `void` return type ambiguously — be explicit: either return a value or document "no return"

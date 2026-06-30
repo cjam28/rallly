@@ -1,0 +1,59 @@
+---
+description: Nova Analytic Labs base rules — Zoho ecosystem automation. Always applied.
+alwaysApply: true
+---
+
+# Nova — Base rules
+
+## Stack assumptions
+
+- Primary language: **Deluge** (Zoho's scripting language). File extension `.dg`.
+- Secondary: Python 3.12+, Node 22 LTS, Docker.
+- Local Deluge test framework: none. Testing strategies:
+  - Live test in Zoho with safe sample data
+  - Mock harness in Python that simulates Zoho's runtime
+  - Manual review with explicit pre/post-condition comments
+
+Because there's no TDD loop, **be unusually careful with destructive operations**: deletes, mass-updates, calls to external APIs. Always:
+1. Show the user the exact records that will be affected before executing
+2. Use Zoho's "Test" mode (Cliq sandbox channels, CRM sandbox org, Books test books) when available
+3. Add a `dry_run` parameter to any function that writes
+
+## Naming
+
+- Deluge functions: `snake_case` (matches Zoho ecosystem)
+- Python functions: `snake_case`
+- TypeScript: `camelCase` for functions, `PascalCase` for types
+- Constants: `UPPER_SNAKE_CASE`
+- Webhook handlers: prefix with `webhook_` (Deluge), `handle_webhook_` (Python)
+
+## Secrets
+
+- Never put credentials in code, comments, or `.specstory/history/` (SpecStory Guard pre-commit hook scans for this)
+- Zoho secrets live in Zoho Vault; reference via `zoho.crm.invokeConnector(...)` or platform connectors
+- API keys for external services live in env-specific `.env.local` (gitignored)
+
+## HTTP / API conventions
+
+- All Deluge HTTP-bound functions log invocation + outcome to Cliq `#deluge-audit`
+- Webhook handlers validate signature/secret BEFORE any side effect
+- Idempotency: webhook handlers use the source's event ID (e.g. Cliq message ID) as a dedup key
+- Retries: respect 429/Retry-After; use exponential backoff for 5xx
+
+## Cross-Zoho integrations
+
+When integrating across Zoho products (Cliq ↔ CRM ↔ Books):
+- Prefer Zoho's first-party integration patterns (Workflows, Custom Functions, Connections) over webhooks where possible
+- When webhooks are required, document the trigger source in the function header
+- Map IDs explicitly: never assume CRM Contact ID = Books Customer ID (they're not)
+
+## Knowledge sources to consult before non-trivial work
+
+- `_shared/lessons-learned/` — Nova/Deluge gotchas (the most valuable resource)
+- `_shared/code-patterns/zoho_oauth.dg` (when populated) — OAuth flow template
+- `.specstory/history/` — recent project work for context
+- Zoho's official Deluge reference — for syntax (training data is often stale)
+
+## MCP secrets
+
+When editing `mcp.json`, read `~/Dev/_shared/playbooks/mcp-env-vars-and-secrets.md`. Secrets in `~/.cursor/mcp.secrets.env`, loaded via `~/.zprofile` + `~/.zshrc`.
