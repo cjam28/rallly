@@ -1,3 +1,55 @@
+<!-- BEGIN managed-from-template:v3 (do not edit between markers; run sync-templates.sh) -->
+# OS / editor noise
+.DS_Store
+Thumbs.db
+*~
+*.swp
+*.swo
+
+# Backup files written by scaffolding (divergent hardlinks, replaced symlinks)
+*.bak-*
+*.divergent-*.bak
+*.replaced-*.bak
+
+# Local credentials (RESOLVED values — never committed)
+.env
+.env.local
+.env.*.local
+*.secrets.env
+*.pem
+*.key
+# .env.op is git-TRACKED (op:// references only, no values) — delivered to cloud/CI. See 03-secrets.mdc.
+!.env.op
+
+# Claude Code local (machine-specific) settings — never committed
+.claude/settings.local.json
+
+# Worktree convention: one workstream = one branch = one worktree under .worktrees/
+.worktrees/
+
+# Editor state
+.vscode/
+!.vscode/extensions.json
+.idea/
+
+# Build/dependency artifacts (extend per-project below)
+node_modules/
+dist/
+build/
+.next/
+__pycache__/
+*.pyc
+
+# SpecStory: history IS committed (with Guard hook scanning for secrets).
+# Only ignore the cache/state SpecStory writes alongside it.
+.specstory/.what-is-this.md
+.specstory/cache/
+
+<!-- END managed-from-template -->
+
+# Project-specific ignores below
+
+# ----- Project-specific (existing .gitignore content preserved below) -----
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
 # dependencies

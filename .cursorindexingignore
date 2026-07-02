@@ -1,0 +1,18 @@
+<!-- BEGIN managed-from-template:v2 (do not edit between markers; run sync-templates.sh) -->
+# Don't index shared knowledge once per project — it's already indexed via the env _shared dir.
+# Explicit @ references still work.
+_shared/**
+
+# SpecStory raw history: don't index by default (huge & noisy);
+# use @ to reference specific past sessions.
+.specstory/**
+
+# Backups
+*.bak-*
+*.divergent-*.bak
+
+# Worktrees (per-workstream isolated checkouts)
+.worktrees/**
+<!-- END managed-from-template -->
+
+# Project-specific ignores below

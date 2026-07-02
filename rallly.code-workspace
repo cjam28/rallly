@@ -1,0 +1,9 @@
+{
+	"folders": [
+		{ "path": "." }
+	],
+	"settings": {
+		"specstory.cloudSync.enabled": "always",
+		"specstory.derivedRules": true
+	}
+}

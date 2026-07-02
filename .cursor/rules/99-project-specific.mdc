@@ -1,0 +1,25 @@
+---
+description: Project-specific rules. Edit freely; not template-managed.
+alwaysApply: true
+---
+
+# Project-specific rules
+
+Add rules unique to this project below. This file is NOT hardlinked and NOT managed
+by sync-templates.
+
+## Backlog.md task tracking (`backlog/`)
+
+This repo uses [Backlog.md](https://github.com/MrLesk/Backlog.md). Global **`backlog`** MCP (`/opt/homebrew/bin/backlog mcp start`) auto-scopes via cwd.
+
+**Session start:** `task_list` first — surface `To Do`, `In Progress`, `Deferred`. When picking up a backlog task, set `In Progress`.
+
+**During work:** Before `task_create`, run `task_list` and dedupe — prefer updating an existing task over a near-duplicate. On deferrals, follow-ups, or out-of-scope issues → `task_create` immediately. `Deferred` = parked; `To Do` = ready. Do not rely on chat memory alone.
+
+**Task completion (mandatory):** When you finish work that satisfies a backlog task, run finalization: view AC/DoD → check satisfied items → append notes → `--final-summary` → status **Done**. Do this before session close; never leave finished work in `To Do` or `In Progress`.
+
+**Session close:** (1) Complete finished tasks per above. (2) Capture deferrals via `task_create`. (3) Reconcile: `backlog task list --plain` — mark done what's finished, merge obvious duplicates, flag stale/superseded items; **do not add new tasks** on this pass.
+
+**Chat import (batch):** Newest chat → oldest, per repo; label each create `--label "imported,chat-YYYY-MM-DD"`. One final reconcile pass — copy-paste prompts in `~/Dev/_shared/playbooks/backlog-task-lifecycle.md`.
+
+**Human views:** `backlog board` · `backlog browser` · git/GitHub under `backlog/`.
