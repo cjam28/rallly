@@ -11,7 +11,7 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
-    "js-cookie": "^3.0.1",
+    "js-cookie": "^3.0.7",
     "posthog-js": "^1.364.6",
     "posthog-node": "^5.28.11",
     "react": "19.2.6"
