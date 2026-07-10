@@ -45,9 +45,9 @@
     "portless": "^0.12.0",
     "prettier": "^3.5.3",
     "prisma": "^7.3.0",
-    "turbo": "^2.6.3",
+    "turbo": "^2.9.14",
     "typescript": "^5.8.2",
-    "vitest": "^4.0.16"
+    "vitest": "^4.1.0"
   },
   "lint-staged": {
     "*.{js,ts,jsx,tsx,json,css}": "biome check --write --no-errors-on-unmatched"
