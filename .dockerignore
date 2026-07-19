@@ -19,3 +19,25 @@ packages/*/dist
 
 # Turbo prune output
 out/
+
+# Dev tooling (not part of the deploy image; keeps Docker build context clean and
+# avoids broken-symlink failures when Portainer/Docker clones the repo standalone).
+# Canonical source: ~/Dev/_shared/_templates/deploy/dockerignore
+# Used by new-project.sh --deployable and harden-deploy-symlinks.sh.
+_shared
+.cursor/
+.claude/
+.mcp.json
+.specstory/
+# Secrets never enter the image — injected at runtime (op inject via sa-ci).
+.env
+.env.local
+.env.*.local
+.env.op
+*.secrets.env
+.github/
+*.code-workspace
+.worktrees/
+*.bak-*
+*.divergent-*.bak
+*.replaced-*.bak

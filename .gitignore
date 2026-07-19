@@ -98,3 +98,4 @@ packages/screenshots/screenshots
 
 # Next
 next-env.d.ts
+/_shared
